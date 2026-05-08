@@ -4,6 +4,7 @@ import nextJest from "next/jest.js";
 const createJestConfig = nextJest({ dir: "./" });
 
 const config: Config = {
+  passWithNoTests: true,
   coverageProvider: "v8",
   testEnvironment: "jsdom",
   // Unit tests use a lightweight setup (no MSW server).

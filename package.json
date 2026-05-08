@@ -11,7 +11,8 @@
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write src tests",
     "format:check": "prettier --check src tests",
-    "test": "jest",
+    "test": "playwright test",
+    "test:unit": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
@@ -68,6 +69,7 @@
     "tailwindcss": "^4.2.4",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vercel": "^53.2.0"
   }
 }

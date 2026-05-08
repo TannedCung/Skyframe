@@ -20,7 +20,7 @@ export default function NewTripPage() {
     flexibilityDays: 0,
     preferenceCheapest: true,
     preferenceFlightTime: "any" as "any" | "day" | "night",
-    tripType: "leisure" as "leisure" | "business" | "adventure" | "cultural",
+    tripType: "round_trip" as "round_trip" | "one_way",
   });
 
   if (status === "loading") {
@@ -75,8 +75,11 @@ export default function NewTripPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Trip Title</label>
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                Trip Title
+              </label>
               <input
+                id="title"
                 required
                 type="text"
                 placeholder="e.g. Tokyo Adventure"
@@ -88,10 +91,14 @@ export default function NewTripPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="originAirport"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Origin Airport (IATA)
                 </label>
                 <input
+                  id="originAirport"
                   required
                   type="text"
                   placeholder="e.g. HAN"
@@ -102,10 +109,14 @@ export default function NewTripPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="destinationCity"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Destination City
                 </label>
                 <input
+                  id="destinationCity"
                   type="text"
                   placeholder="e.g. Tokyo"
                   value={form.destinationCity}
@@ -117,8 +128,11 @@ export default function NewTripPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                </label>
                 <input
+                  id="startDate"
                   required
                   type="date"
                   value={form.startDate}
@@ -127,8 +141,11 @@ export default function NewTripPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                </label>
                 <input
+                  id="endDate"
                   required
                   type="date"
                   value={form.endDate}
@@ -140,23 +157,28 @@ export default function NewTripPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Trip Type</label>
+                <label htmlFor="tripType" className="block text-sm font-medium text-gray-700 mb-1">
+                  Flight Type
+                </label>
                 <select
+                  id="tripType"
                   value={form.tripType}
                   onChange={(e) => set("tripType", e.target.value as typeof form.tripType)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="leisure">Leisure</option>
-                  <option value="business">Business</option>
-                  <option value="adventure">Adventure</option>
-                  <option value="cultural">Cultural</option>
+                  <option value="round_trip">Round Trip</option>
+                  <option value="one_way">One Way</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="preferenceFlightTime"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Preferred Flight Time
                 </label>
                 <select
+                  id="preferenceFlightTime"
                   value={form.preferenceFlightTime}
                   onChange={(e) =>
                     set("preferenceFlightTime", e.target.value as typeof form.preferenceFlightTime)

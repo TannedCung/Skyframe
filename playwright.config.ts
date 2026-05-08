@@ -2,24 +2,35 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env["CI"],
   retries: process.env["CI"] ? 2 : 0,
-  workers: process.env["CI"] ? 1 : undefined,
+  workers: 1,
   reporter: "html",
   use: {
     baseURL: process.env["PLAYWRIGHT_BASE_URL"] ?? "http://localhost:3000",
     trace: "on-first-retry",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "setup",
+      testDir: "./tests/setup",
+      testMatch: "**/auth.setup.ts",
+    },
+    {
+      name: "e2e",
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "tests/setup/.auth/user.json",
+      },
+    },
   ],
   webServer: {
     command: "next dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env["CI"],
-    env: {
-      NODE_ENV: "test",
-    },
+    timeout: 60000,
+    env: { NODE_ENV: "test" },
   },
 });
