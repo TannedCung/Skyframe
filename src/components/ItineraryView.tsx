@@ -22,18 +22,25 @@ export function ItineraryView({ itinerary }: ItineraryViewProps) {
               {flight.currency} {flight.totalPrice.toFixed(2)}
             </span>
           ) : (
-            <span className="text-gray-500 text-sm italic">
-              Price unavailable — check airline site
-            </span>
+            <a
+              href={flight.bookingLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-amber-700 italic hover:text-amber-900 hover:underline"
+            >
+              Price unavailable — search Google Flights →
+            </a>
           )}
-          <a
-            href={flight.bookingLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-blue-600 underline hover:text-blue-800"
-          >
-            Book on {flight.provider === "airlabs" ? "airline site" : "Kiwi"} →
-          </a>
+          {flight.priceAvailable && (
+            <a
+              href={flight.bookingLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 underline hover:text-blue-800"
+            >
+              Book on {flight.provider === "kiwi" ? "Kiwi" : "airline site"} →
+            </a>
+          )}
         </div>
       </div>
 

@@ -35,14 +35,16 @@ export function getFlightProvider(): CompositeFlightProvider {
 
   const chain: Array<{ name: string; provider: FlightProvider }> = [];
 
-  const airlabsKey = process.env["AIRLABS_API_KEY"];
-  if (airlabsKey) {
-    chain.push({ name: "airlabs", provider: new AirlabsFlightProvider(airlabsKey) });
-  }
-
+  // Kiwi first: returns real prices and booking links.
+  // AirLabs fallback: schedule data only, no prices.
   const kiwiKey = process.env["KIWI_API_KEY"];
   if (kiwiKey) {
     chain.push({ name: "kiwi", provider: new KiwiTequilaFlightProvider(kiwiKey) });
+  }
+
+  const airlabsKey = process.env["AIRLABS_API_KEY"];
+  if (airlabsKey) {
+    chain.push({ name: "airlabs", provider: new AirlabsFlightProvider(airlabsKey) });
   }
 
   if (chain.length === 0) {

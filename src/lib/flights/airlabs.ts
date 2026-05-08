@@ -36,14 +36,25 @@ export class AirlabsFlightProvider implements FlightProvider {
   }
 
   async searchFlights(params: FlightSearchParams): Promise<FlightOption[]> {
-    const outbound = await this.fetchSchedules(params.origin, params.destination);
+    const outbound = await this.fetchSchedules(params.origin, params.destination, params.dateFrom);
     if (!outbound.length) return [];
 
     const inboundFlights: AirlabsSchedule[] = params.roundTrip
-      ? await this.fetchSchedules(params.destination, params.origin)
+      ? await this.fetchSchedules(
+          params.destination,
+          params.origin,
+          params.returnFrom ?? params.dateTo,
+        )
       : [];
 
-    const flights = this.buildFlightOptions(outbound, inboundFlights, params.roundTrip);
+    const flights = this.buildFlightOptions(
+      outbound,
+      inboundFlights,
+      params.roundTrip,
+      params.origin,
+      params.destination,
+      params.dateFrom,
+    );
 
     if (params.preferenceFlightTime !== "any") {
       return flights.filter((f) =>
@@ -54,11 +65,17 @@ export class AirlabsFlightProvider implements FlightProvider {
     return flights;
   }
 
-  private async fetchSchedules(depIata: string, arrIata: string): Promise<AirlabsSchedule[]> {
+  private async fetchSchedules(
+    depIata: string,
+    arrIata: string,
+    date: string,
+  ): Promise<AirlabsSchedule[]> {
     const url = new URL(AIRLABS_BASE_URL);
     url.searchParams.set("dep_iata", depIata);
     url.searchParams.set("arr_iata", arrIata);
     url.searchParams.set("api_key", this.apiKey);
+    // Filter to the requested date so we don't get today's schedules for future trips
+    url.searchParams.set("_date", date);
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -98,6 +115,9 @@ export class AirlabsFlightProvider implements FlightProvider {
     outbound: AirlabsSchedule[],
     inbound: AirlabsSchedule[],
     roundTrip: boolean,
+    origin: string,
+    destination: string,
+    date: string,
   ): FlightOption[] {
     return outbound.map((out): FlightOption => {
       const depHour = parseLocalHour(out.dep_time);
@@ -114,7 +134,6 @@ export class AirlabsFlightProvider implements FlightProvider {
 
       let inboundLeg: FlightLeg | undefined;
       if (roundTrip && inbound.length > 0) {
-        // Pair with the first inbound flight (same airline preferred)
         const paired = inbound.find((i) => i.airline_iata === out.airline_iata) ?? inbound[0]!;
         inboundLeg = {
           departureTime: toIsoLike(paired.dep_time),
@@ -126,6 +145,9 @@ export class AirlabsFlightProvider implements FlightProvider {
         };
       }
 
+      // AirLabs provides no pricing — link to Google Flights so the user can search themselves
+      const bookingLink = `https://www.google.com/travel/flights?q=flights+from+${origin}+to+${destination}+on+${date}`;
+
       return {
         provider: "airlabs",
         price: 0,
@@ -133,7 +155,7 @@ export class AirlabsFlightProvider implements FlightProvider {
         priceAvailable: false,
         outbound: outboundLeg,
         inbound: inboundLeg,
-        bookingLink: `https://www.${out.airline_iata.toLowerCase()}.com`,
+        bookingLink,
         isDayFlight,
       };
     });
