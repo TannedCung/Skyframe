@@ -1,7 +1,27 @@
 /**
  * @jest-environment node
  */
-import { parseJsonFromLLM } from "../provider";
+
+jest.mock("../anthropic", () => ({
+  callAnthropic: jest.fn(),
+}));
+
+jest.mock("../openai", () => ({
+  callOpenAI: jest.fn(),
+}));
+
+import { parseJsonFromLLM, callLLM } from "../provider";
+import { callAnthropic } from "../anthropic";
+import { callOpenAI } from "../openai";
+
+const mockCallAnthropic = jest.mocked(callAnthropic);
+const mockCallOpenAI = jest.mocked(callOpenAI);
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  delete process.env["ANTHROPIC_API_KEY"];
+  delete process.env["OPENAI_API_KEY"];
+});
 
 describe("parseJsonFromLLM", () => {
   it("parses plain JSON", () => {
@@ -31,40 +51,43 @@ describe("parseJsonFromLLM", () => {
   });
 });
 
-describe("callLLM (mocked Anthropic)", () => {
-  it("calls Anthropic SDK and returns text content", async () => {
-    const mockCreate = jest.fn().mockResolvedValue({
-      content: [{ type: "text", text: '{"result":"ok"}' }],
-    });
-
-    jest.mock("@anthropic-ai/sdk", () => ({
-      default: jest.fn().mockImplementation(() => ({
-        messages: { create: mockCreate },
-      })),
-    }));
-
+describe("callLLM", () => {
+  it("calls Anthropic when ANTHROPIC_API_KEY is set and returns its result", async () => {
     process.env["ANTHROPIC_API_KEY"] = "test-key";
-    jest.resetModules();
+    mockCallAnthropic.mockResolvedValue('{"result":"ok"}');
 
-    const { callLLM } = await import("../provider");
     const result = await callLLM("system", "user");
-    expect(typeof result).toBe("string");
 
-    delete process.env["ANTHROPIC_API_KEY"];
+    expect(result).toBe('{"result":"ok"}');
+    expect(mockCallAnthropic).toHaveBeenCalledWith("system", "user");
+    expect(mockCallOpenAI).not.toHaveBeenCalled();
+  });
+
+  it("falls back to OpenAI when Anthropic throws", async () => {
+    process.env["ANTHROPIC_API_KEY"] = "test-key";
+    process.env["OPENAI_API_KEY"] = "openai-key";
+    mockCallAnthropic.mockRejectedValue(new Error("Anthropic down"));
+    mockCallOpenAI.mockResolvedValue("openai-response");
+
+    const result = await callLLM("system", "user");
+
+    expect(result).toBe("openai-response");
+    expect(mockCallOpenAI).toHaveBeenCalledWith("system", "user");
+  });
+
+  it("uses OpenAI directly when only OPENAI_API_KEY is set", async () => {
+    process.env["OPENAI_API_KEY"] = "openai-key";
+    mockCallOpenAI.mockResolvedValue("openai-only-response");
+
+    const result = await callLLM("system", "user");
+
+    expect(result).toBe("openai-only-response");
+    expect(mockCallAnthropic).not.toHaveBeenCalled();
   });
 
   it("throws when no provider is configured", async () => {
-    const savedAnthropicKey = process.env["ANTHROPIC_API_KEY"];
-    const savedOpenAIKey = process.env["OPENAI_API_KEY"];
-    delete process.env["ANTHROPIC_API_KEY"];
-    delete process.env["OPENAI_API_KEY"];
-
-    jest.resetModules();
-    const { callLLM } = await import("../provider");
-
-    await expect(callLLM("system", "user")).rejects.toThrow("No LLM provider configured");
-
-    process.env["ANTHROPIC_API_KEY"] = savedAnthropicKey;
-    process.env["OPENAI_API_KEY"] = savedOpenAIKey;
+    await expect(callLLM("system", "user")).rejects.toThrow(
+      "No LLM provider configured: set ANTHROPIC_API_KEY or OPENAI_API_KEY",
+    );
   });
 });

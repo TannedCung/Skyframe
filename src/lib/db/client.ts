@@ -1,6 +1,4 @@
-import { neon, neonConfig } from "@neondatabase/serverless";
-
-neonConfig.fetchConnectionCache = true;
+import { neon } from "@neondatabase/serverless";
 
 const connectionString =
   process.env["NODE_ENV"] === "test"
