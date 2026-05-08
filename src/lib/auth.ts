@@ -72,8 +72,18 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async jwt({ token, user }) {
-      // Persist the DB user id into the JWT on first sign-in
-      if (user?.id) token["userId"] = user.id;
+      // On first sign-in (user is present), resolve the DB UUID by email.
+      // We cannot use user.id here for Google OAuth — it's the provider sub, not the DB UUID.
+      if (user?.email) {
+        try {
+          const { getUserByEmail } = await import("./db/queries/users");
+          const dbUser = await getUserByEmail(user.email);
+          if (dbUser) token["userId"] = dbUser.id;
+        } catch {
+          // If DB lookup fails, fall back to user.id (works for test credentials)
+          if (user.id) token["userId"] = user.id;
+        }
+      }
       return token;
     },
   },
