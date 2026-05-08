@@ -6,6 +6,8 @@ import {
   upsertWatcher,
   createNotification,
   getWatchersByTrip,
+  getWatcherByInviteToken,
+  acceptInvite,
 } from "@/lib/db/queries/notifications";
 import { getCurrentItinerary } from "@/lib/db/queries/itineraries";
 import { sendEmail } from "@/lib/email/ses";
@@ -69,6 +71,30 @@ export async function POST(
     const failed = results.filter((r) => r.status === "rejected").map((_, i) => body.emails![i]);
 
     return NextResponse.json({ invited, failed });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) return apiError(Errors.unauthorized());
+
+    const { id } = await params;
+    const body = (await request.json()) as { inviteToken?: string };
+    if (!body.inviteToken) return apiError(Errors.badRequest("inviteToken is required"));
+
+    const watcher = await getWatcherByInviteToken(body.inviteToken);
+    if (!watcher) return apiError(Errors.notFound("Invite"));
+    if (watcher.tripId !== id) return apiError(Errors.forbidden());
+
+    await acceptInvite(body.inviteToken);
+
+    return NextResponse.json({ accepted: true });
   } catch (error) {
     return apiError(error);
   }

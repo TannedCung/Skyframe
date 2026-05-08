@@ -10,7 +10,16 @@ export interface User {
   email: string;
   name: string | null;
   googleId: string | null;
+  notificationEmail: boolean;
+  defaultCurrency: string;
+  timezone: string;
   createdAt: Date;
+}
+
+export interface UserPreferences {
+  notificationEmail: boolean;
+  defaultCurrency: string;
+  timezone: string;
 }
 
 export interface Trip {
