@@ -34,9 +34,11 @@ export async function POST(
     const body = (await request.json()) as { sg1OptionId?: string };
     if (!body.sg1OptionId) return apiError(Errors.badRequest("sg1OptionId is required"));
 
-    // Load selected SG1 option
+    // sg1OptionId is the LLM-assigned id inside llm_raw_plan_json, not the DB UUID
     const optRows = await sql`
-      SELECT * FROM trip_raw_options WHERE id = ${body.sg1OptionId} AND trip_id = ${id}
+      SELECT * FROM trip_raw_options
+      WHERE trip_id = ${id} AND llm_raw_plan_json->>'id' = ${body.sg1OptionId}
+      ORDER BY created_at DESC LIMIT 1
     `;
     if (!optRows[0]) return apiError(Errors.notFound("SG1 option"));
 
@@ -85,7 +87,7 @@ export async function POST(
     await supersedePreviousItineraries(id, itinerary.id);
 
     // Mark SG1 option as selected
-    await sql`UPDATE trip_raw_options SET selected = TRUE WHERE id = ${body.sg1OptionId}`;
+    await sql`UPDATE trip_raw_options SET selected = TRUE WHERE trip_id = ${id} AND llm_raw_plan_json->>'id' = ${body.sg1OptionId}`;
 
     return NextResponse.json({ itinerary }, { status: 201 });
   } catch (error) {
