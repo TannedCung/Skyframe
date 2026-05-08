@@ -1,7 +1,83 @@
+/**
+ * Skyframe end-to-end test suite.
+ *
+ * Covers: auth/redirects, API security, trip CRUD, SG1/SG2 itinerary flows.
+ * The setup project (tests/setup/auth.setup.ts) runs first and injects an
+ * authenticated session cookie, so all non-auth tests run as a signed-in user.
+ */
 import { test, expect } from "@playwright/test";
 import type { Itinerary } from "../../src/types";
 
-// ─── Dashboard & create-trip ───────────────────────────────────────────────
+// ─── Auth & public pages (no session) ─────────────────────────────────────
+
+test.describe("Public pages", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("landing page renders with sign-in links", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: /skyframe/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /sign in/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /start planning/i })).toBeVisible();
+  });
+
+  test("login page shows Google sign-in button", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByText(/continue with google/i)).toBeVisible();
+  });
+
+  test("/dashboard redirects to /login when unauthenticated", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("/trip/:id redirects to /login when unauthenticated", async ({ page }) => {
+    await page.goto("/trip/some-trip-id");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("/trip/new redirects to /login when unauthenticated", async ({ page }) => {
+    await page.goto("/trip/new");
+    await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+// ─── API security (no session) ────────────────────────────────────────────
+
+test.describe("API security", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  for (const [method, path] of [
+    ["GET", "/api/trips"],
+    ["POST", "/api/trips"],
+    ["GET", "/api/trips/some-id"],
+    ["PATCH", "/api/trips/some-id"],
+    ["DELETE", "/api/trips/some-id"],
+    ["POST", "/api/trips/some-id/generate-sg1"],
+    ["POST", "/api/trips/some-id/generate-sg2"],
+    ["POST", "/api/trips/some-id/invite"],
+    ["GET", "/api/settings"],
+    ["PATCH", "/api/settings"],
+  ] as const) {
+    test(`${method} ${path} → 401`, async ({ request }) => {
+      const res = await request.fetch(path, { method, data: {} });
+      expect(res.status()).toBe(401);
+    });
+  }
+
+  test("cron without secret → 401 or 200 (depends on env)", async ({ request }) => {
+    const res = await request.get("/api/cron/refresh-itineraries");
+    expect([200, 401]).toContain(res.status());
+  });
+
+  test("cron with wrong bearer → 401 or 200 (depends on env)", async ({ request }) => {
+    const res = await request.get("/api/cron/refresh-itineraries", {
+      headers: { authorization: "Bearer wrong-secret" },
+    });
+    expect([200, 401]).toContain(res.status());
+  });
+});
+
+// ─── Dashboard (authenticated) ────────────────────────────────────────────
 
 test.describe("Dashboard", () => {
   test("shows My Trips heading and New Trip button", async ({ page }) => {
@@ -10,7 +86,7 @@ test.describe("Dashboard", () => {
     await expect(page.getByRole("button", { name: /\+ new trip/i })).toBeVisible();
   });
 
-  test("New Trip button navigates to create form", async ({ page }) => {
+  test("New Trip button navigates to /trip/new", async ({ page }) => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /\+ new trip/i }).click();
     await expect(page).toHaveURL("/trip/new");
@@ -18,18 +94,17 @@ test.describe("Dashboard", () => {
   });
 });
 
-test.describe("Create Trip", () => {
-  test("submitting the form creates a trip and redirects to detail page", async ({ page }) => {
-    await page.goto("/trip/new");
+// ─── Create trip ──────────────────────────────────────────────────────────
 
+test.describe("Create Trip", () => {
+  test("form creates trip and redirects to detail page", async ({ page }) => {
+    await page.goto("/trip/new");
     await page.getByLabel(/trip title/i).fill("E2E Tokyo Trip");
     await page.getByLabel(/origin airport/i).fill("HAN");
     await page.getByLabel(/destination city/i).fill("Tokyo");
     await page.getByLabel(/start date/i).fill("2026-08-01");
     await page.getByLabel(/end date/i).fill("2026-08-10");
-
     await page.getByRole("button", { name: /create trip/i }).click();
-
     await expect(page).toHaveURL(/\/trip\/[a-f0-9-]+$/, { timeout: 15000 });
     await expect(page.getByRole("heading", { name: /e2e tokyo trip/i })).toBeVisible();
   });
@@ -39,19 +114,17 @@ test.describe("Create Trip", () => {
     await expect(page.getByText(/e2e tokyo trip/i).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test("missing required field prevents submission", async ({ page }) => {
+  test("missing required field keeps user on form (HTML5 validation)", async ({ page }) => {
     await page.goto("/trip/new");
     await page.getByLabel(/trip title/i).fill("No Origin Trip");
     await page.getByLabel(/start date/i).fill("2026-08-01");
     await page.getByLabel(/end date/i).fill("2026-08-10");
-    // do NOT fill origin airport (required)
     await page.getByRole("button", { name: /create trip/i }).click();
-    // HTML5 validation keeps user on the form page
     await expect(page).toHaveURL("/trip/new");
   });
 });
 
-// ─── SG1 & SG2 itinerary flows ─────────────────────────────────────────────
+// ─── SG1 & SG2 itinerary flows ────────────────────────────────────────────
 
 const mockSg1Option = {
   id: "opt-1",
@@ -64,7 +137,7 @@ const mockSg1Option = {
 };
 
 const mockSg1Response = {
-  options: [{ id: "sg1-opt-1", llm_raw_plan_json: mockSg1Option }],
+  options: [{ id: "sg1-db-uuid", llm_raw_plan_json: mockSg1Option }],
 };
 
 test.describe("SG1 and SG2 itinerary flows", () => {
@@ -94,21 +167,14 @@ test.describe("SG1 and SG2 itinerary flows", () => {
     await expect(page.getByText(/HAN/)).toBeVisible();
   });
 
-  test("Regenerate SG1 shows trip options (LLM mocked)", async ({ page }) => {
+  test("Regenerate SG1 shows options", async ({ page }) => {
     await page.route(`**/api/trips/${tripId}/generate-sg1`, async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(mockSg1Response),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ options: [] }),
-        });
-      }
+      const body = route.request().method() === "POST" ? mockSg1Response : { options: [] };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
     });
 
     await page.goto(`/trip/${tripId}`);
@@ -139,9 +205,9 @@ test.describe("SG1 and SG2 itinerary flows", () => {
     });
   });
 
-  test("building SG2 itinerary shows day-by-day plan (LLM + flights mocked)", async ({ page }) => {
+  test("SG2 build renders day-by-day itinerary", async ({ page }) => {
     const mockItinerary: Partial<Itinerary> = {
-      id: "mock-itinerary-id",
+      id: "mock-itin-id",
       tripId,
       version: 1,
       status: "current",
@@ -167,20 +233,19 @@ test.describe("SG1 and SG2 itinerary flows", () => {
           day: 1,
           date: "2026-08-01",
           location: "Hanoi → Tokyo",
-          activities: ["Board VN310 at 23:20", "Night flight to Tokyo"],
-          notes: "Arrive early morning on day 2",
+          activities: ["Board VN310 at 23:20"],
+          notes: "Night flight",
         },
         {
           day: 2,
           date: "2026-08-02",
           location: "Tokyo",
-          activities: ["Arrive NRT 07:30", "Check in hotel", "Explore Shinjuku"],
+          activities: ["Arrive NRT 07:30", "Explore Shinjuku"],
           notes: null,
         },
       ],
       cheapestTotalPrice: 0,
       currency: "USD",
-      llmModel: "claude-sonnet-4-6",
       createdAt: new Date().toISOString() as unknown as Date,
     };
 
@@ -207,7 +272,6 @@ test.describe("SG1 and SG2 itinerary flows", () => {
     await expect(page.getByText(/cultural highlights/i)).toBeVisible({ timeout: 15000 });
     await page.getByText(/cultural highlights/i).click();
     await page.getByRole("button", { name: /build full itinerary/i }).click();
-
     await expect(page.getByTestId("itinerary-view")).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/Hanoi → Tokyo/i)).toBeVisible();
     await expect(page.getByText(/VN310/i).first()).toBeVisible();
