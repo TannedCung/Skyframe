@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
 
 @theme {
   --font-display: 'Bricolage Grotesque', 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
