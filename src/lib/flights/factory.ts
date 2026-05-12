@@ -1,5 +1,6 @@
 import { AirlabsFlightProvider } from "./airlabs";
 import { KiwiTequilaFlightProvider } from "./kiwi";
+import { VietJetAirFlightProvider } from "./vietjet";
 import type { FlightProvider, FlightSearchParams, FlightOption } from "./types";
 import logger from "@/lib/logger";
 
@@ -40,6 +41,20 @@ export function getFlightProvider(): CompositeFlightProvider {
   const kiwiKey = process.env["KIWI_API_KEY"];
   if (kiwiKey) {
     chain.push({ name: "kiwi", provider: new KiwiTequilaFlightProvider(kiwiKey) });
+  }
+
+  // VietJet: real prices in VND via a headless browser search service.
+  // Deploy services/vietjet-token-server/ and set both env vars to enable.
+  const vietjetServiceUrl = process.env["VIETJET_TOKEN_SERVICE_URL"];
+  const vietjetServiceSecret = process.env["VIETJET_TOKEN_SERVICE_SECRET"];
+  if (vietjetServiceUrl && vietjetServiceSecret) {
+    chain.push({
+      name: "vietjet",
+      provider: new VietJetAirFlightProvider({
+        serviceUrl: vietjetServiceUrl,
+        serviceSecret: vietjetServiceSecret,
+      }),
+    });
   }
 
   const airlabsKey = process.env["AIRLABS_API_KEY"];
