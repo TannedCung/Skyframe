@@ -28,8 +28,8 @@ export default function NewTripPage() {
     return (
       <>
         <AppHeader />
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-cream-100">
+          <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </>
     );
@@ -65,17 +65,17 @@ export default function NewTripPage() {
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-gray-50 p-8">
+      <main className="min-h-screen bg-cream-100 p-8">
         <div className="max-w-2xl mx-auto">
           <button
             onClick={() => router.push("/dashboard")}
-            className="text-sm text-gray-400 hover:text-gray-600 mb-6 flex items-center gap-1"
+            className="text-sm text-ink-400 hover:text-ink-700 mb-6 flex items-center gap-1"
           >
             ← Dashboard
           </button>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-6">Plan a New Trip</h1>
+          <div className="bg-white rounded-2xl border border-line p-8">
+            <h1 className="text-2xl font-bold text-ink-900 mb-6">Plan a New Trip</h1>
 
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -85,7 +85,7 @@ export default function NewTripPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="title" className="block text-sm font-medium text-ink-700 mb-1">
                   Trip Title
                 </label>
                 <input
@@ -95,7 +95,7 @@ export default function NewTripPage() {
                   placeholder="e.g. Tokyo Adventure"
                   value={form.title}
                   onChange={(e) => set("title", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                 />
               </div>
 
@@ -103,7 +103,7 @@ export default function NewTripPage() {
                 <div>
                   <label
                     htmlFor="originAirport"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-ink-700 mb-1"
                   >
                     Origin Airport (IATA)
                   </label>
@@ -115,13 +115,13 @@ export default function NewTripPage() {
                     maxLength={3}
                     value={form.originAirport}
                     onChange={(e) => set("originAirport", e.target.value.toUpperCase())}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="destinationCity"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-ink-700 mb-1"
                   >
                     Destination City
                   </label>
@@ -131,7 +131,7 @@ export default function NewTripPage() {
                     placeholder="e.g. Tokyo"
                     value={form.destinationCity}
                     onChange={(e) => set("destinationCity", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
               </div>
@@ -140,7 +140,7 @@ export default function NewTripPage() {
                 <div>
                   <label
                     htmlFor="startDate"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-ink-700 mb-1"
                   >
                     Start Date
                   </label>
@@ -150,11 +150,11 @@ export default function NewTripPage() {
                     type="date"
                     value={form.startDate}
                     onChange={(e) => set("startDate", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
                 <div>
-                  <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="endDate" className="block text-sm font-medium text-ink-700 mb-1">
                     End Date
                   </label>
                   <input
@@ -163,24 +163,21 @@ export default function NewTripPage() {
                     type="date"
                     value={form.endDate}
                     onChange={(e) => set("endDate", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label
-                    htmlFor="tripType"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
+                  <label htmlFor="tripType" className="block text-sm font-medium text-ink-700 mb-1">
                     Flight Type
                   </label>
                   <select
                     id="tripType"
                     value={form.tripType}
                     onChange={(e) => set("tripType", e.target.value as typeof form.tripType)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   >
                     <option value="round_trip">Round Trip</option>
                     <option value="one_way">One Way</option>
@@ -189,7 +186,7 @@ export default function NewTripPage() {
                 <div>
                   <label
                     htmlFor="preferenceFlightTime"
-                    className="block text-sm font-medium text-gray-700 mb-1"
+                    className="block text-sm font-medium text-ink-700 mb-1"
                   >
                     Preferred Flight Time
                   </label>
@@ -202,7 +199,7 @@ export default function NewTripPage() {
                         e.target.value as typeof form.preferenceFlightTime,
                       )
                     }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   >
                     <option value="any">Any time</option>
                     <option value="day">Day flights</option>
@@ -217,9 +214,9 @@ export default function NewTripPage() {
                   type="checkbox"
                   checked={form.preferenceCheapest}
                   onChange={(e) => set("preferenceCheapest", e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 rounded border-gray-300"
+                  className="h-4 w-4 text-coral-500 rounded border-cream-300"
                 />
-                <label htmlFor="cheapest" className="text-sm text-gray-700">
+                <label htmlFor="cheapest" className="text-sm text-ink-700">
                   Prefer cheapest available flights
                 </label>
               </div>
@@ -227,7 +224,7 @@ export default function NewTripPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                className="w-full bg-coral-500 text-ink-900 py-3 rounded-lg font-semibold hover:bg-coral-600 transition-colors disabled:opacity-50"
               >
                 {submitting ? "Creating..." : "Create Trip & Plan with AI →"}
               </button>

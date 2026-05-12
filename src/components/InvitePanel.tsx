@@ -42,9 +42,9 @@ export function InvitePanel({ tripId }: InvitePanelProps) {
   }
 
   return (
-    <div data-testid="invite-panel" className="bg-white rounded-xl border border-gray-200 p-5">
-      <h3 className="font-semibold text-gray-900 mb-3">Invite Friends</h3>
-      <p className="text-sm text-gray-500 mb-3">
+    <div data-testid="invite-panel" className="bg-white rounded-xl border border-line p-5">
+      <h3 className="font-semibold text-ink-900 mb-3">Invite Friends</h3>
+      <p className="text-sm text-ink-500 mb-3">
         Share this trip and let friends watch for price changes.
       </p>
 
@@ -54,13 +54,13 @@ export function InvitePanel({ tripId }: InvitePanelProps) {
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
           placeholder="friend@example.com, another@example.com"
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
           data-testid="invite-email-input"
         />
         <button
           onClick={handleInvite}
           disabled={loading || !emails.trim()}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+          className="bg-coral-500 text-ink-900 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-coral-600 transition-colors"
           data-testid="invite-submit"
         >
           {loading ? "Sending..." : "Invite"}

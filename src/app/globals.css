@@ -1,1 +1,48 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+@theme {
+  --font-display: 'Bricolage Grotesque', 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, 'Roboto Mono', monospace;
+
+  --color-cream-50: #FFFAEC;
+  --color-cream-100: #FFF6DE;
+  --color-cream-200: #F8EDC9;
+  --color-cream-300: #EFE2B5;
+
+  --color-coral-100: #FFE5DA;
+  --color-coral-300: #FBB89A;
+  --color-coral-500: #F48F68;
+  --color-coral-600: #E07550;
+  --color-coral-700: #B85633;
+
+  --color-teal-100: #E5F8F7;
+  --color-teal-200: #BDECEA;
+  --color-teal-400: #8BDFDD;
+  --color-teal-600: #2FA5A1;
+  --color-teal-800: #1F6E6B;
+
+  --color-yellow-100: #FFF4D0;
+  --color-yellow-300: #FFE394;
+  --color-yellow-700: #8A6B1F;
+
+  --color-ink-900: #2A1E15;
+  --color-ink-800: #4A3A2E;
+  --color-ink-700: #6B5A4D;
+  --color-ink-500: #968471;
+  --color-ink-400: #B6A593;
+
+  --color-line: #EFE4C8;
+  --color-line-soft: #F5ECD2;
+}
+
+@layer base {
+  body {
+    background-color: #FFF6DE;
+    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    color: #6B5A4D;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

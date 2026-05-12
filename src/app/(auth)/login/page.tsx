@@ -13,14 +13,14 @@ export default function LoginPage() {
   }, [session, router]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
+    <main className="min-h-screen flex items-center justify-center bg-cream-100">
       <div className="bg-white p-10 rounded-2xl shadow-md w-full max-w-md text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Skyframe</h1>
-        <p className="text-gray-500 mb-8">Sign in to start planning your next adventure</p>
+        <h1 className="text-3xl font-bold text-ink-900 mb-2">Welcome to Skyframe</h1>
+        <p className="text-ink-500 mb-8">Sign in to start planning your next adventure</p>
 
         <button
           onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-lg px-6 py-3 text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-center gap-3 border border-cream-300 rounded-lg px-6 py-3 text-ink-700 font-semibold hover:bg-cream-50 transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path

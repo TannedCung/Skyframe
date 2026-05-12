@@ -76,8 +76,8 @@ export default function SettingsPage() {
     return (
       <>
         <AppHeader />
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-cream-100">
+          <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </>
     );
@@ -86,21 +86,21 @@ export default function SettingsPage() {
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-gray-50 p-8">
+      <main className="min-h-screen bg-cream-100 p-8">
         <div className="max-w-xl mx-auto space-y-6">
-          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+          <h1 className="text-3xl font-bold text-ink-900">Settings</h1>
 
           {/* Profile card */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-            <h2 className="font-semibold text-gray-900">Profile</h2>
+          <div className="bg-white rounded-xl border border-line p-6 space-y-4">
+            <h2 className="font-semibold text-ink-900">Profile</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Name</p>
-                <p className="font-medium text-gray-900 text-sm">{session?.user?.name ?? "—"}</p>
+                <p className="text-xs text-ink-500 mb-1">Name</p>
+                <p className="font-medium text-ink-900 text-sm">{session?.user?.name ?? "—"}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Email</p>
-                <p className="font-medium text-gray-900 text-sm">{session?.user?.email ?? "—"}</p>
+                <p className="text-xs text-ink-500 mb-1">Email</p>
+                <p className="font-medium text-ink-900 text-sm">{session?.user?.email ?? "—"}</p>
               </div>
             </div>
           </div>
@@ -108,9 +108,9 @@ export default function SettingsPage() {
           {/* Preferences form */}
           <form
             onSubmit={handleSave}
-            className="bg-white rounded-xl border border-gray-200 p-6 space-y-5"
+            className="bg-white rounded-xl border border-line p-6 space-y-5"
           >
-            <h2 className="font-semibold text-gray-900">Preferences</h2>
+            <h2 className="font-semibold text-ink-900">Preferences</h2>
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -125,16 +125,16 @@ export default function SettingsPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-700">Email notifications</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-sm font-medium text-ink-700">Email notifications</p>
+                <p className="text-xs text-ink-500 mt-0.5">
                   Receive emails when flight prices change or a new itinerary is ready
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setPrefs((p) => ({ ...p, notificationEmail: !p.notificationEmail }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                  prefs.notificationEmail ? "bg-indigo-600" : "bg-gray-200"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 ${
+                  prefs.notificationEmail ? "bg-coral-500" : "bg-cream-200"
                 }`}
               >
                 <span
@@ -148,7 +148,7 @@ export default function SettingsPage() {
             <div>
               <label
                 htmlFor="defaultCurrency"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className="block text-sm font-medium text-ink-700 mb-1"
               >
                 Default currency
               </label>
@@ -156,7 +156,7 @@ export default function SettingsPage() {
                 id="defaultCurrency"
                 value={prefs.defaultCurrency}
                 onChange={(e) => setPrefs((p) => ({ ...p, defaultCurrency: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
               >
                 {CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -167,14 +167,14 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label htmlFor="timezone" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="timezone" className="block text-sm font-medium text-ink-700 mb-1">
                 Timezone
               </label>
               <select
                 id="timezone"
                 value={prefs.timezone}
                 onChange={(e) => setPrefs((p) => ({ ...p, timezone: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
               >
                 {TIMEZONES.map((tz) => (
                   <option key={tz} value={tz}>
@@ -187,7 +187,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              className="w-full bg-coral-500 text-ink-900 py-2.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save preferences"}
             </button>

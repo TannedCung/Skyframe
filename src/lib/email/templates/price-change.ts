@@ -29,18 +29,18 @@ Skyframe
   const html = `
 <!DOCTYPE html>
 <html>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2>Flight price ${direction} for "${params.tripTitle}"</h2>
-  <table>
-    <tr><td>Previous price:</td><td><strong>${params.currency} ${params.oldPrice.toFixed(2)}</strong></td></tr>
-    <tr><td>New price:</td><td><strong>${params.currency} ${params.newPrice.toFixed(2)}</strong></td></tr>
-    <tr><td>Change:</td><td style="color: ${diff < 0 ? "green" : "red"}"><strong>${diff < 0 ? "▼" : "▲"} ${params.currency} ${amount}</strong></td></tr>
+<body style="font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #FFFAEC; color: #6B5A4D;">
+  <h2 style="color: #2A1E15;">Flight price ${direction} for &quot;${params.tripTitle}&quot;</h2>
+  <table style="border-collapse: collapse; margin: 16px 0;">
+    <tr><td style="padding: 4px 12px 4px 0; color: #968471;">Previous price:</td><td style="padding: 4px 0;"><strong style="color: #2A1E15;">${params.currency} ${params.oldPrice.toFixed(2)}</strong></td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; color: #968471;">New price:</td><td style="padding: 4px 0;"><strong style="color: #2A1E15;">${params.currency} ${params.newPrice.toFixed(2)}</strong></td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; color: #968471;">Change:</td><td style="padding: 4px 0;"><strong style="color: ${diff < 0 ? "#2FA5A1" : "#D85A45"};">${diff < 0 ? "▼" : "▲"} ${params.currency} ${amount}</strong></td></tr>
   </table>
   <br/>
-  <a href="${tripUrl}" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
+  <a href="${tripUrl}" style="background: #F48F68; color: #2A1E15; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">
     View Updated Itinerary
   </a>
-  <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Skyframe — AI-powered travel planning</p>
+  <p style="color: #968471; font-size: 12px; margin-top: 20px;">Skyframe — AI-powered travel planning</p>
 </body>
 </html>
 `.trim();

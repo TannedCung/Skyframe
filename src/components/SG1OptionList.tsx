@@ -14,7 +14,7 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+          <div key={i} className="h-28 bg-cream-200 rounded-xl animate-pulse" />
         ))}
       </div>
     );
@@ -22,7 +22,7 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
 
   if (!options.length) {
     return (
-      <p className="text-gray-400 text-center py-8">
+      <p className="text-ink-400 text-center py-8">
         No trip options generated yet. Click &quot;Generate Options&quot; to start.
       </p>
     );
@@ -39,21 +39,21 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
             data-testid={`sg1-option-${option.id}`}
             className={`w-full text-left rounded-xl border-2 p-4 transition-colors ${
               isSelected
-                ? "border-indigo-500 bg-indigo-50"
-                : "border-gray-200 bg-white hover:border-indigo-300"
+                ? "border-coral-500 bg-coral-100"
+                : "border-line bg-white hover:border-coral-300"
             }`}
           >
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-gray-900">
+                <p className="font-semibold text-ink-900">
                   {option.entryCity} → {option.exitCity}
                 </p>
-                <p className="text-sm text-indigo-600 font-medium mt-0.5">{option.theme}</p>
+                <p className="text-sm text-coral-600 font-medium mt-0.5">{option.theme}</p>
                 {option.description && (
-                  <p className="text-sm text-gray-500 mt-1">{option.description}</p>
+                  <p className="text-sm text-ink-500 mt-1">{option.description}</p>
                 )}
               </div>
-              <div className="text-right text-xs text-gray-400 shrink-0 ml-4">
+              <div className="text-right text-xs text-ink-400 shrink-0 ml-4">
                 <p>{option.airports.entry}</p>
                 <p>→ {option.airports.exit}</p>
                 <p className="mt-1">
@@ -61,7 +61,7 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
                 </p>
               </div>
             </div>
-            {isSelected && <p className="text-xs text-indigo-600 font-medium mt-2">Selected</p>}
+            {isSelected && <p className="text-xs text-coral-600 font-medium mt-2">Selected</p>}
           </button>
         );
       })}

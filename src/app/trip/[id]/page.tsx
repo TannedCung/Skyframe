@@ -50,22 +50,22 @@ function InviteBanner({
   }
 
   return (
-    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6 flex items-center justify-between gap-4">
-      <p className="text-sm text-indigo-800">
+    <div className="bg-coral-100 border border-coral-300 rounded-xl p-4 mb-6 flex items-center justify-between gap-4">
+      <p className="text-sm text-coral-700">
         You&#39;ve been invited to view this trip. Accept to receive price-change updates.
       </p>
       <div className="flex items-center gap-2 shrink-0">
-        {state === "error" && <span className="text-xs text-red-600">Failed — try again</span>}
+        {state === "error" && <span className="text-xs text-red-500">Failed — try again</span>}
         <button
           onClick={accept}
           disabled={state === "accepting"}
-          className="bg-indigo-600 text-white text-sm px-4 py-1.5 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          className="bg-coral-500 text-ink-900 text-sm px-4 py-1.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors disabled:opacity-50"
         >
           {state === "accepting" ? "Accepting…" : "Accept invite"}
         </button>
         <button
           onClick={onDone}
-          className="text-sm text-indigo-500 hover:text-indigo-700 font-medium"
+          className="text-sm text-coral-600 hover:text-coral-700 font-medium"
         >
           Dismiss
         </button>
@@ -146,8 +146,8 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
     return (
       <>
         <AppHeader />
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-cream-100">
+          <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </>
     );
@@ -157,12 +157,12 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
     return (
       <>
         <AppHeader />
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="text-center">
-            <p className="text-gray-500 mb-4">{fetchError ?? "Trip not found"}</p>
+            <p className="text-ink-500 mb-4">{fetchError ?? "Trip not found"}</p>
             <button
               onClick={() => router.push("/dashboard")}
-              className="text-indigo-600 font-medium hover:text-indigo-700"
+              className="text-coral-600 font-medium hover:text-coral-700"
             >
               ← Back to Dashboard
             </button>
@@ -177,19 +177,19 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   return (
     <>
       <AppHeader />
-      <main className="min-h-screen bg-gray-50">
+      <main className="min-h-screen bg-cream-100">
         <div className="max-w-5xl mx-auto p-8">
           {inviteToken && <InviteBanner tripId={id} token={inviteToken} onDone={dismissInvite} />}
 
           <div className="mb-6">
             <button
               onClick={() => router.push("/dashboard")}
-              className="text-sm text-gray-400 hover:text-gray-600 mb-3 flex items-center gap-1"
+              className="text-sm text-ink-400 hover:text-ink-700 mb-3 flex items-center gap-1"
             >
               ← Dashboard
             </button>
-            <h1 className="text-3xl font-bold text-gray-900">{trip.title}</h1>
-            <p className="text-gray-500 mt-1">
+            <h1 className="text-3xl font-bold text-ink-900">{trip.title}</h1>
+            <p className="text-ink-500 mt-1">
               {trip.originAirport} → {trip.destinationCity ?? trip.destinationCountry ?? "Flexible"}{" "}
               | {new Date(trip.startDate).toLocaleDateString()} –{" "}
               {new Date(trip.endDate).toLocaleDateString()}
@@ -199,13 +199,13 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Left column: SG1 options */}
             <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <div className="bg-white rounded-xl border border-line p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-gray-900">Trip Options</h2>
+                  <h2 className="font-semibold text-ink-900">Trip Options</h2>
                   <button
                     onClick={generateSG1}
                     disabled={loadingSg1}
-                    className="text-sm text-indigo-600 font-medium disabled:opacity-50 hover:text-indigo-700"
+                    className="text-sm text-coral-600 font-medium disabled:opacity-50 hover:text-coral-700"
                   >
                     {loadingSg1 ? "Generating..." : "Regenerate"}
                   </button>
@@ -220,7 +220,7 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                   <button
                     onClick={() => generateSG2(selectedSg1)}
                     disabled={loadingSg2}
-                    className="w-full mt-4 bg-indigo-600 text-white py-2 rounded-lg font-semibold disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+                    className="w-full mt-4 bg-coral-500 text-ink-900 py-2 rounded-lg font-semibold disabled:opacity-50 hover:bg-coral-600 transition-colors"
                   >
                     {loadingSg2 ? "Building Itinerary..." : "Build Full Itinerary →"}
                   </button>
@@ -235,7 +235,7 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
               {currentItinerary ? (
                 <ItineraryView itinerary={currentItinerary} />
               ) : (
-                <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">
+                <div className="bg-white rounded-xl border border-line p-10 text-center text-ink-400">
                   <p className="text-lg mb-2">No itinerary yet</p>
                   <p className="text-sm">
                     Select a trip option and click &quot;Build Full Itinerary&quot;

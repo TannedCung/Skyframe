@@ -31,18 +31,18 @@ Skyframe
   const html = `
 <!DOCTYPE html>
 <html>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2>${params.inviterName} shared a trip with you!</h2>
-  <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-    <h3 style="margin: 0 0 10px;">${params.tripTitle}</h3>
+<body style="font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #FFFAEC; color: #6B5A4D;">
+  <h2 style="color: #2A1E15;">${params.inviterName} shared a trip with you!</h2>
+  <div style="background: #FFF6DE; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #EFE4C8;">
+    <h3 style="margin: 0 0 10px; color: #2A1E15;">${params.tripTitle}</h3>
     <p style="margin: 4px 0;">📍 ${params.destination}</p>
     <p style="margin: 4px 0;">📅 ${params.startDate} → ${params.endDate}</p>
     <p style="margin: 4px 0;">💰 From ${params.currency} ${params.price.toFixed(2)}</p>
   </div>
-  <a href="${acceptUrl}" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">
+  <a href="${acceptUrl}" style="background: #F48F68; color: #2A1E15; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">
     View Trip &amp; Watch Price Updates
   </a>
-  <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Skyframe — AI-powered travel planning</p>
+  <p style="color: #968471; font-size: 12px; margin-top: 20px;">Skyframe — AI-powered travel planning</p>
 </body>
 </html>
 `.trim();

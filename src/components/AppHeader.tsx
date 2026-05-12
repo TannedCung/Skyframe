@@ -16,7 +16,7 @@ export function AppHeader() {
       <Link
         href={href as "/dashboard" | "/settings"}
         className={`text-sm font-medium transition-colors ${
-          active ? "text-indigo-600" : "text-gray-500 hover:text-gray-900"
+          active ? "text-coral-600" : "text-ink-500 hover:text-ink-900"
         }`}
       >
         {label}
@@ -25,17 +25,17 @@ export function AppHeader() {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <header className="bg-white border-b border-line sticky top-0 z-10">
       <div className="max-w-5xl mx-auto px-8 h-14 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/dashboard" className="font-bold text-indigo-600 text-lg tracking-tight">
+          <Link href="/dashboard" className="font-bold text-coral-700 text-lg tracking-tight">
             Skyframe
           </Link>
           <nav className="flex items-center gap-4">{navLink("/dashboard", "Dashboard")}</nav>
         </div>
 
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500 hidden sm:block">
+          <span className="text-sm text-ink-500 hidden sm:block">
             {session?.user?.name ?? session?.user?.email}
           </span>
           {navLink("/settings", "Settings")}
