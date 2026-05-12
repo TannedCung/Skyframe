@@ -292,8 +292,8 @@ export function TripChatUI({
     </div>
   );
 
-  const planPanel = showPlan ? (
-    <div data-testid="plan-panel" className="flex flex-col h-full bg-white border-l border-line">
+  const planPanel = (
+    <div className="flex flex-col h-full bg-white border-l border-line">
       <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-cream-50">
         <h2 className="display-tight text-sm font-semibold text-ink-900 tracking-wide uppercase">
           Trip Plan (Draft)
@@ -314,18 +314,27 @@ export function TripChatUI({
         {renderedPlan}
       </div>
     </div>
-  ) : null;
+  );
 
   return (
     <div className="h-full w-full">
-      {showPlan ? (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] h-full">
-          {chatPanel}
-          {planPanel}
+      <div
+        className="grid h-full transition-[grid-template-columns] duration-500 ease-out"
+        style={{ gridTemplateColumns: showPlan ? "30% 70%" : "100% 0%" }}
+      >
+        <div className="min-w-0 overflow-hidden">
+          <div className={showPlan ? "w-full h-full" : "max-w-3xl mx-auto h-full"}>{chatPanel}</div>
         </div>
-      ) : (
-        <div className="max-w-3xl mx-auto h-full">{chatPanel}</div>
-      )}
+        <div
+          data-testid={showPlan ? "plan-panel" : undefined}
+          aria-hidden={!showPlan}
+          className={`min-w-0 overflow-hidden transition-opacity duration-500 ease-out ${
+            showPlan ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          {showPlan && planPanel}
+        </div>
+      </div>
     </div>
   );
 }

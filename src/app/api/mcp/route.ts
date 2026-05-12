@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFlightProvider } from "@/lib/flights/factory";
+import { generateDetailedPlan } from "@/lib/agent/detailed-plan";
 import logger from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -45,6 +46,18 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {},
+    },
+  },
+  {
+    name: "generate_detailed_plan",
+    description:
+      "Generate a Day-by-Day markdown itinerary for the trip and persist it into the trip's draft_plan. Call once all key trip info is collected (destination, dates, origin, optional flights).",
+    inputSchema: {
+      type: "object",
+      required: ["tripId"],
+      properties: {
+        tripId: { type: "string", description: "UUID of the trip to generate a plan for" },
+      },
     },
   },
 ];
@@ -140,6 +153,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       if (toolName === "list_providers") {
         const result = handleListProviders();
+        return ok(id, { content: [{ type: "text", text: JSON.stringify(result) }] });
+      }
+
+      if (toolName === "generate_detailed_plan") {
+        const tripId = String(toolArgs["tripId"] ?? "");
+        if (!tripId) throw new Error("tripId is required");
+        const result = await generateDetailedPlan(tripId);
         return ok(id, { content: [{ type: "text", text: JSON.stringify(result) }] });
       }
 
