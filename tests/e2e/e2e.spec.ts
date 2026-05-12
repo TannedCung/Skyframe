@@ -6,6 +6,7 @@
  * authenticated session cookie, so all non-auth tests run as a signed-in user.
  */
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { Itinerary } from "../../src/types";
 
 // ─── Auth & public pages (no session) ─────────────────────────────────────
@@ -86,41 +87,171 @@ test.describe("Dashboard", () => {
     await expect(page.getByRole("button", { name: /\+ new trip/i })).toBeVisible();
   });
 
-  test("New Trip button navigates to /trip/new", async ({ page }) => {
+  test("New Trip button navigates to /trip/new and shows chat", async ({ page }) => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /\+ new trip/i }).click();
     await expect(page).toHaveURL("/trip/new");
-    await expect(page.getByRole("heading", { name: /plan a new trip/i })).toBeVisible();
+    await expect(page.getByText(/where would you like to go/i)).toBeVisible();
   });
 });
 
-// ─── Create trip ──────────────────────────────────────────────────────────
+// ─── Create trip via chat ────────────────────────────────────────────────
 
-test.describe("Create Trip", () => {
-  test("form creates trip and redirects to detail page", async ({ page }) => {
+const SKI_TRIP_PROMPT =
+  "hello, I would like to plan up a trip with my gf around Feb next year to Tokyo. " +
+  "We would like to visit the south (Kyoto, Osaka ...) And Tokyo. " +
+  "Snow ski is a must in the itinerary";
+
+const SKI_PLAN_MARKDOWN = `# Japan Ski Trip (Feb 2027)
+
+## Travelers
+- 2 people — you and your partner
+
+## Destinations
+- Tokyo (home base)
+- Kyoto
+- Osaka
+
+## Dates
+- 2027-02-10 → 2027-02-20 (10 nights)
+
+## Must-have activities
+- Snow skiing — likely Hakuba or Nozawa Onsen day trip
+
+## Notes
+- South Japan loop after a few days in Tokyo
+`;
+
+function sse(events: unknown[]): string {
+  return events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+}
+
+async function stubChatRoute(page: Page, events: unknown[]): Promise<void> {
+  await page.route("**/api/trips/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: sse(events),
+    });
+  });
+}
+
+test.describe("Create Trip via chat", () => {
+  test("initial state shows greeting, chat input, no plan panel", async ({ page }) => {
     await page.goto("/trip/new");
-    await page.getByLabel(/trip title/i).fill("E2E Tokyo Trip");
-    await page.getByLabel(/origin airport/i).fill("HAN");
-    await page.getByLabel(/destination city/i).fill("Tokyo");
-    await page.getByLabel(/start date/i).fill("2026-08-01");
-    await page.getByLabel(/end date/i).fill("2026-08-10");
-    await page.getByRole("button", { name: /create trip/i }).click();
-    await expect(page).toHaveURL(/\/trip\/[a-f0-9-]+$/, { timeout: 15000 });
-    await expect(page.getByRole("heading", { name: /e2e tokyo trip/i })).toBeVisible();
+    await expect(page.getByText(/where would you like to go/i)).toBeVisible();
+    await expect(page.getByTestId("chat-input")).toBeVisible();
+    await expect(page.getByTestId("plan-panel")).toHaveCount(0);
   });
 
-  test("created trip appears on dashboard", async ({ page }) => {
+  test("multi-destination ski prompt drafts a plan into split view", async ({ page }) => {
+    await stubChatRoute(page, [
+      { type: "trip_created", tripId: "chat-fixture-1" },
+      { type: "plan_update", markdown: SKI_PLAN_MARKDOWN },
+      { type: "text", delta: "Love it! " },
+      { type: "text", delta: "What city are you flying from?" },
+      { type: "done", tripId: "chat-fixture-1" },
+    ]);
+
+    await page.goto("/trip/new");
+    await page.getByTestId("chat-input").fill(SKI_TRIP_PROMPT);
+    await page.getByTestId("chat-send").click();
+
+    await expect(page.getByText(SKI_TRIP_PROMPT)).toBeVisible();
+    await expect(page.getByText(/what city are you flying from/i)).toBeVisible({
+      timeout: 5000,
+    });
+
+    const plan = page.getByTestId("plan-panel");
+    await expect(plan).toBeVisible();
+    await expect(plan).toContainText(/japan ski trip/i);
+    await expect(plan).toContainText(/tokyo/i);
+    await expect(plan).toContainText(/kyoto/i);
+    await expect(plan).toContainText(/osaka/i);
+    await expect(plan).toContainText(/snow skiing/i);
+    await expect(plan).toContainText(/2 people/i);
+
+    await expect(page.getByTestId("chat-input")).toHaveAttribute(
+      "placeholder",
+      /ctrl\+l to quote/i,
+    );
+  });
+
+  test("Ctrl+L quotes selected plan text into chat input", async ({ page }) => {
+    await stubChatRoute(page, [
+      { type: "trip_created", tripId: "chat-fixture-2" },
+      { type: "plan_update", markdown: SKI_PLAN_MARKDOWN },
+      { type: "text", delta: "Got it. What city are you flying from?" },
+      { type: "done", tripId: "chat-fixture-2" },
+    ]);
+
+    await page.goto("/trip/new");
+    await page.getByTestId("chat-input").fill(SKI_TRIP_PROMPT);
+    await page.getByTestId("chat-send").click();
+    await expect(page.getByTestId("plan-panel")).toBeVisible();
+
+    // Select "Snow skiing" inside the plan panel.
+    const selected = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="plan-content"]');
+      if (!panel) return null;
+      const target = "Snow skiing";
+      const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text;
+        const idx = node.textContent?.indexOf(target) ?? -1;
+        if (idx >= 0) {
+          const range = document.createRange();
+          range.setStart(node, idx);
+          range.setEnd(node, idx + target.length);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+          return sel?.toString() ?? null;
+        }
+      }
+      return null;
+    });
+    expect(selected).toBe("Snow skiing");
+
+    await page.keyboard.press("Control+l");
+
+    await expect(page.getByTestId("chat-input")).toHaveValue(/^> Snow skiing/);
+  });
+
+  test("finalize_trip redirects to /trip/[id] and trip appears on dashboard", async ({
+    page,
+    request,
+  }) => {
+    // Pre-create a real trip we can redirect to.
+    const res = await request.post("/api/trips", {
+      data: {
+        title: "E2E Chat Ski Trip",
+        originAirport: "HAN",
+        destinationCity: "Tokyo",
+        startDate: "2027-02-10",
+        endDate: "2027-02-20",
+        tripType: "round_trip",
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { trip } = (await res.json()) as { trip: { id: string } };
+    const tripId = trip.id;
+
+    await stubChatRoute(page, [
+      { type: "trip_created", tripId },
+      { type: "plan_update", markdown: SKI_PLAN_MARKDOWN },
+      { type: "text", delta: "Done — kicking off your itinerary." },
+      { type: "done", tripId, redirect: `/trip/${tripId}` },
+    ]);
+
+    await page.goto("/trip/new");
+    await page.getByTestId("chat-input").fill("yes, book it!");
+    await page.getByTestId("chat-send").click();
+
+    await expect(page).toHaveURL(new RegExp(`/trip/${tripId}$`), { timeout: 15000 });
+
     await page.goto("/dashboard");
-    await expect(page.getByText(/e2e tokyo trip/i).first()).toBeVisible({ timeout: 10000 });
-  });
-
-  test("missing required field keeps user on form (HTML5 validation)", async ({ page }) => {
-    await page.goto("/trip/new");
-    await page.getByLabel(/trip title/i).fill("No Origin Trip");
-    await page.getByLabel(/start date/i).fill("2026-08-01");
-    await page.getByLabel(/end date/i).fill("2026-08-10");
-    await page.getByRole("button", { name: /create trip/i }).click();
-    await expect(page).toHaveURL("/trip/new");
+    await expect(page.getByText(/e2e chat ski trip/i).first()).toBeVisible({ timeout: 10000 });
   });
 });
 

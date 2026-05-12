@@ -9,7 +9,13 @@ import {
 } from "@google/adk";
 import type { Schema } from "@google/genai";
 import { OpenAILlm } from "./openai_llm";
-import { updateTripFields, updateTripStatus, getTripById } from "@/lib/db/queries/trips";
+import {
+  updateTripFields,
+  updateTripStatus,
+  getTripById,
+  updateTripDraftPlan,
+  getTripDraftPlan,
+} from "@/lib/db/queries/trips";
 import type { TripChatFields } from "@/lib/db/queries/trips";
 import { getFlightProvider } from "@/lib/flights/factory";
 import logger from "@/lib/logger";
@@ -22,19 +28,53 @@ const AGENT_NAME = "trip_planner";
 
 const SYSTEM_PROMPT = `You are a friendly trip planning assistant for Skyframe. Your job is to help users plan trips conversationally.
 
-Collect information in this order, ONE question at a time:
-1. **Destination city** — where they want to go
-2. **Travel dates** — start and end date (ask for both together)
-3. **Origin** — city or airport code they're flying from
+You have a **working plan document** that the user sees alongside the chat. As you learn new details, keep this document up to date by calling \`draft_plan\` — it's the structured artifact of what you've gathered so far. Update it after every confirmed piece of information.
 
-Rules:
-- Call save_trip_info IMMEDIATELY after each piece of info is confirmed
-- Convert city names to IATA codes: Hanoi→HAN, Ho Chi Minh City/Saigon→SGN, Bangkok→BKK, Tokyo→NRT or HND, Singapore→SIN
-- Format dates as YYYY-MM-DD
-- Once you have all three MUST fields (destination, dates, origin), call search_flights automatically
-- After showing flight results, ask ONE preference question if appropriate (budget vs comfort)
-- Call finalize_trip ONLY when user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good")
-- Keep responses concise — 1-3 sentences max per turn`;
+## Information to collect (ONE question per turn)
+**MUST** (required before \`finalize_trip\`):
+1. Primary destination — the main city. If the user mentions multiple cities, pick one as the trip's home base and capture the rest in the plan.
+2. Travel dates — start and end (ask together).
+3. Origin — city or airport code they're flying from.
+
+**SHOULD ask if natural**:
+- Number of travelers / who they're going with
+- Must-have activities (e.g. skiing, diving, specific attractions)
+- Budget vs comfort preference
+
+## The draft_plan document
+Keep it tidy markdown with these sections (omit any that have no info yet):
+\`\`\`
+# {{Trip title}}
+
+## Travelers
+- ...
+
+## Destinations
+- {{primary}}
+- {{additional cities, regions}}
+
+## Dates
+- {{start}} → {{end}} ({{duration}})
+
+## Must-have activities
+- ...
+
+## Flights
+- {{flight summaries once searched}}
+
+## Notes
+- {{anything else worth remembering}}
+\`\`\`
+
+## Rules
+- Call \`save_trip_info\` immediately after the user confirms a structured field (destination, dates, origin, etc).
+- Call \`draft_plan\` after each new confirmed detail, including soft info like "snow skiing is a must" or "going with partner".
+- Convert city names to IATA codes for the \`originAirport\` field: Hanoi→HAN, Ho Chi Minh City/Saigon→SGN, Bangkok→BKK, Tokyo→NRT, Osaka→KIX, Kyoto→KIX (no airport, use Osaka), Singapore→SIN.
+- Format dates as YYYY-MM-DD. Resolve relative dates against today: ${new Date().toISOString().slice(0, 10)}.
+- "Feb next year", "this December", etc → pick the nearest matching calendar window (mid-month if unspecified) and confirm with the user.
+- Once all three MUST fields are set, call \`search_flights\` automatically and add a Flights section to the plan.
+- Call \`finalize_trip\` ONLY when the user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good").
+- Keep chat responses concise — 1-3 sentences per turn. The plan document is where detail lives.`;
 
 export interface ChatMessage {
   role: "user" | "model";
@@ -44,6 +84,7 @@ export interface ChatMessage {
 export type AgentEvent =
   | { type: "text"; delta: string }
   | { type: "tool_call"; name: string }
+  | { type: "plan_update"; markdown: string }
   | { type: "done"; tripId: string; redirect?: string }
   | { type: "trip_created"; tripId: string };
 
@@ -134,6 +175,28 @@ function buildTools(tripId: string) {
     },
   });
 
+  const draftPlanTool = new FunctionTool({
+    name: "draft_plan",
+    description:
+      "Write or update the full structured trip plan as markdown. Call this whenever new information is confirmed. Always pass the COMPLETE updated plan, not a diff — it replaces the previous version.",
+    parameters: {
+      type: "object",
+      required: ["markdown"],
+      properties: {
+        markdown: {
+          type: "string",
+          description: "The full plan document in markdown.",
+        },
+      },
+    } as unknown as Schema,
+    execute: async (input: unknown) => {
+      const { markdown } = input as { markdown: string };
+      await updateTripDraftPlan(tripId, markdown);
+      logger.debug({ tripId, length: markdown.length }, "draft plan saved");
+      return { success: true, markdown };
+    },
+  });
+
   const finalizeTrip = new FunctionTool({
     name: "finalize_trip",
     description: "Activate the trip after user confirmation. Triggers itinerary generation.",
@@ -149,7 +212,7 @@ function buildTools(tripId: string) {
     },
   });
 
-  return [saveTripInfo, searchFlights, finalizeTrip];
+  return [saveTripInfo, searchFlights, draftPlanTool, finalizeTrip];
 }
 
 export async function* runTripPlannerAgent(
@@ -158,6 +221,12 @@ export async function* runTripPlannerAgent(
   userId: string,
 ): AsyncGenerator<AgentEvent> {
   if (messages.length === 0) return;
+
+  // Rehydrate the existing draft plan so the UI shows it before the agent has run.
+  const existingPlan = await getTripDraftPlan(tripId);
+  if (existingPlan) {
+    yield { type: "plan_update", markdown: existingPlan };
+  }
 
   const agent = new LlmAgent({
     name: AGENT_NAME,
@@ -213,9 +282,15 @@ export async function* runTripPlannerAgent(
         yield { type: "tool_call", name: part.functionCall.name ?? "" };
       }
 
-      // Detect finalize_trip completion
+      // Forward tool responses we care about
       if (part.functionResponse) {
-        const fr = part.functionResponse as { name?: string; response?: { redirect?: string } };
+        const fr = part.functionResponse as {
+          name?: string;
+          response?: { redirect?: string; markdown?: string };
+        };
+        if (fr.name === "draft_plan" && typeof fr.response?.markdown === "string") {
+          yield { type: "plan_update", markdown: fr.response.markdown };
+        }
         if (fr.name === "finalize_trip" && fr.response?.redirect) {
           finalized = true;
           yield { type: "done", tripId, redirect: fr.response.redirect };

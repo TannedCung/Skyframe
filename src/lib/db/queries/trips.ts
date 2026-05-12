@@ -55,6 +55,15 @@ export async function updateTripStatus(id: string, status: TripStatus): Promise<
   await sql`UPDATE trips SET status = ${status} WHERE id = ${id}`;
 }
 
+export async function updateTripDraftPlan(id: string, markdown: string): Promise<void> {
+  await sql`UPDATE trips SET draft_plan = ${markdown} WHERE id = ${id}`;
+}
+
+export async function getTripDraftPlan(id: string): Promise<string | null> {
+  const rows = await sql`SELECT draft_plan FROM trips WHERE id = ${id}`;
+  return (rows[0]?.["draft_plan"] as string | null) ?? null;
+}
+
 export async function updateLastFlightRefresh(id: string): Promise<void> {
   await sql`UPDATE trips SET last_flight_refresh_at = NOW() WHERE id = ${id}`;
 }

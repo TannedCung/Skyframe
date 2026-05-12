@@ -23,7 +23,7 @@ export default function NewTripPage() {
   return (
     <>
       <AppHeader crumbs={crumbs} />
-      <main className="min-h-screen bg-cream-100 px-8 pt-6">
+      <main className="bg-cream-100">
         <TripChatUI />
       </main>
     </>
