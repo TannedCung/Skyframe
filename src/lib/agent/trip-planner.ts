@@ -78,8 +78,36 @@ Keep it tidy markdown with these sections (omit any that have no info yet):
   - "Feb 10 to Feb 20" with no year → pick the SOONEST future occurrence of that window. If Feb has already passed this year, that's Feb of next year.
   - When in any doubt, confirm the year with the user before calling \`save_trip_info\`.
 - Once all three MUST fields are set, call \`search_flights\` automatically and add a Flights section to the plan.
-- Call \`finalize_trip\` ONLY when the user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good").
-- Keep chat responses concise — 1-3 sentences per turn. The plan document is where detail lives.`;
+- Call \`finalize_trip\` ONLY when the user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good"). Do NOT call finalize_trip on a trip that is already \`active\` — it has been finalized before and the user is back to refine.
+- Keep chat responses concise — 1-3 sentences per turn. The plan document is where detail lives.
+
+## Resumed trips
+If the **Current trip state** below shows status \`active\` or an existing plan, the user is RETURNING to refine. Do not re-introduce yourself or re-ask the basics — the plan already captures them. Instead, acknowledge what they want to change and act on it (update the plan, re-search flights, expand the day-by-day, etc).
+
+## Day-by-day itinerary
+Once flights are confirmed and the user signals they're ready (e.g. "let's build the days", "what should we do each day"), expand \`draft_plan\` with a Day-by-Day section under the Flights section:
+
+\`\`\`
+## Day-by-Day
+### Day 1 — <date> · <city>
+- Morning: <activity>
+- Afternoon: <activity>
+- Evening: <activity>
+
+### Day 2 — <date> · <city>
+- ...
+\`\`\`
+
+Be specific. Use the must-have activities (e.g. ski day at Hakuba on Day 3). Don't fabricate prices.`;
+
+function buildInstruction(state: { status: string; hasPlan: boolean }): string {
+  const planLine = state.hasPlan ? "yes — user is refining" : "no — fresh conversation";
+  return `${SYSTEM_PROMPT}
+
+## Current trip state
+- status: ${state.status}
+- plan present: ${planLine}`;
+}
 
 export interface ChatMessage {
   role: "user" | "model";
@@ -227,8 +255,9 @@ export async function* runTripPlannerAgent(
 ): AsyncGenerator<AgentEvent> {
   if (messages.length === 0) return;
 
-  // Rehydrate the existing draft plan so the UI shows it before the agent has run.
-  const existingPlan = await getTripDraftPlan(tripId);
+  // Load trip state to inject runtime context into the instruction, and rehydrate
+  // the draft plan so the UI shows it before the agent has run.
+  const [trip, existingPlan] = await Promise.all([getTripById(tripId), getTripDraftPlan(tripId)]);
   if (existingPlan) {
     yield { type: "plan_update", markdown: existingPlan };
   }
@@ -236,7 +265,10 @@ export async function* runTripPlannerAgent(
   const agent = new LlmAgent({
     name: AGENT_NAME,
     model: "gpt-4o",
-    instruction: SYSTEM_PROMPT,
+    instruction: buildInstruction({
+      status: trip?.status ?? "draft",
+      hasPlan: !!existingPlan,
+    }),
     tools: buildTools(tripId),
   });
 

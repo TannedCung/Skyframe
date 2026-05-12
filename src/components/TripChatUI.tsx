@@ -10,18 +10,39 @@ interface Message {
   streaming?: boolean;
 }
 
-const INITIAL_MESSAGE: Message = {
+interface TripChatUIProps {
+  /** Existing trip ID. If omitted, a draft trip is created on first message. */
+  initialTripId?: string;
+  /** Persisted chat history to hydrate the conversation. */
+  initialMessages?: ChatMessage[];
+  /** Persisted draft plan markdown to render in the plan panel. */
+  initialPlanMarkdown?: string | null;
+  /** Navigate away when the agent finalises (used on /trip/new). */
+  redirectOnFinalize?: boolean;
+}
+
+const GREETING: Message = {
   role: "model",
   content: "Hi! Where would you like to go? ✈️",
 };
 
-export function TripChatUI() {
+export function TripChatUI({
+  initialTripId,
+  initialMessages,
+  initialPlanMarkdown,
+  redirectOnFinalize = false,
+}: TripChatUIProps = {}) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (initialMessages && initialMessages.length > 0) {
+      return initialMessages.map((m) => ({ role: m.role, content: m.content }));
+    }
+    return [GREETING];
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tripId, setTripId] = useState<string | null>(null);
-  const [planMarkdown, setPlanMarkdown] = useState<string | null>(null);
+  const [tripId, setTripId] = useState<string | null>(initialTripId ?? null);
+  const [planMarkdown, setPlanMarkdown] = useState<string | null>(initialPlanMarkdown ?? null);
   const [quoteHint, setQuoteHint] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -157,7 +178,7 @@ export function TripChatUI() {
               return next;
             });
             const redirect = event.redirect as string | undefined;
-            if (redirect) {
+            if (redirect && redirectOnFinalize) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               setTimeout(() => router.push(redirect as any), 1000);
             }
@@ -193,7 +214,7 @@ export function TripChatUI() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, tripId, router]);
+  }, [input, loading, messages, tripId, router, redirectOnFinalize]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -296,7 +317,7 @@ export function TripChatUI() {
   ) : null;
 
   return (
-    <div className="h-[calc(100vh-72px)] w-full">
+    <div className="h-full w-full">
       {showPlan ? (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] h-full">
           {chatPanel}

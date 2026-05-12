@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getTripById, updateTripStatus, deleteTrip } from "@/lib/db/queries/trips";
+import {
+  getTripById,
+  updateTripStatus,
+  deleteTrip,
+  getTripDraftPlan,
+} from "@/lib/db/queries/trips";
 import { getCurrentItinerary, getItineraryHistory } from "@/lib/db/queries/itineraries";
 import { getWatchersByTrip } from "@/lib/db/queries/notifications";
+import { getMessagesForTrip } from "@/lib/db/queries/chat";
 import { apiError, Errors } from "@/lib/errors";
 import type { TripStatus } from "@/types";
 
@@ -26,10 +32,20 @@ export async function GET(
 
     if (!isAllowed) return apiError(Errors.forbidden());
 
-    const currentItinerary = await getCurrentItinerary(id);
-    const history = await getItineraryHistory(id);
+    const [currentItinerary, history, messages, draftPlan] = await Promise.all([
+      getCurrentItinerary(id),
+      getItineraryHistory(id),
+      getMessagesForTrip(id),
+      getTripDraftPlan(id),
+    ]);
 
-    return NextResponse.json({ trip, currentItinerary, history });
+    return NextResponse.json({
+      trip,
+      currentItinerary,
+      history,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      draftPlan,
+    });
   } catch (error) {
     return apiError(error);
   }

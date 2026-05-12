@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { apiError, Errors } from "@/lib/errors";
 import { createTrip } from "@/lib/db/queries/trips";
+import { appendChatMessage } from "@/lib/db/queries/chat";
 import { runTripPlannerAgent } from "@/lib/agent/trip-planner";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
 import logger from "@/lib/logger";
@@ -50,9 +51,20 @@ export async function POST(req: Request) {
           logger.info({ tripId, userId }, "Draft trip created for chat session");
         }
 
+        // Persist the user's latest message before running the agent.
+        const lastUserMessage = messages[messages.length - 1];
+        if (lastUserMessage?.role === "user" && lastUserMessage.content.trim()) {
+          await appendChatMessage(tripId, "user", lastUserMessage.content);
+        }
+
+        let assistantText = "";
         for await (const event of runTripPlannerAgent(messages, tripId, userId)) {
+          if (event.type === "text") assistantText += event.delta;
           emit(event);
           if (event.type === "done") break;
+        }
+        if (assistantText.trim()) {
+          await appendChatMessage(tripId, "model", assistantText);
         }
       } catch (err) {
         logger.error({ err }, "Chat agent error");

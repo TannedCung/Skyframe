@@ -7,7 +7,29 @@
  */
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { Itinerary } from "../../src/types";
+import { neon } from "@neondatabase/serverless";
+import fs from "fs";
+import path from "path";
+
+function loadEnvFile(p: string): Record<string, string> {
+  if (!fs.existsSync(p)) return {};
+  const out: Record<string, string> = {};
+  for (const line of fs.readFileSync(p, "utf-8").split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq === -1) continue;
+    out[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
+  }
+  return out;
+}
+
+function dbClient() {
+  const env = loadEnvFile(path.resolve(__dirname, "../../.env.local"));
+  const url = env["DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "";
+  if (!url) throw new Error("DATABASE_URL missing for e2e DB seeding");
+  return neon(url);
+}
 
 // ─── Auth & public pages (no session) ─────────────────────────────────────
 
@@ -255,156 +277,68 @@ test.describe("Create Trip via chat", () => {
   });
 });
 
-// ─── SG1 & SG2 itinerary flows ────────────────────────────────────────────
+// ─── Trip detail (chat-first, resumes from history) ──────────────────────
 
-const mockSg1Option = {
-  id: "opt-1",
-  entryCity: "Tokyo",
-  exitCity: "Tokyo",
-  theme: "Cultural Highlights",
-  approximateDates: { start: "2026-08-01", end: "2026-08-07" },
-  airports: { entry: "NRT", exit: "NRT" },
-  description: "7-day cultural exploration of Tokyo",
-};
-
-const mockSg1Response = {
-  options: [{ id: "sg1-db-uuid", llm_raw_plan_json: mockSg1Option }],
-};
-
-test.describe("SG1 and SG2 itinerary flows", () => {
-  let tripId: string;
-
-  test.beforeAll(async ({ request }) => {
-    const res = await request.post("/api/trips", {
+test.describe("Trip detail (chat resume)", () => {
+  test("hydrates chat history and plan from DB on /trip/[id]", async ({ page, request }) => {
+    const tripRes = await request.post("/api/trips", {
       data: {
-        title: "E2E Itinerary Trip",
+        title: "E2E Resume Trip",
         originAirport: "HAN",
         destinationCity: "Tokyo",
-        startDate: "2026-08-01",
-        endDate: "2026-08-10",
+        startDate: "2027-02-10",
+        endDate: "2027-02-20",
         tripType: "round_trip",
       },
     });
-    expect(res.ok()).toBeTruthy();
-    const body = (await res.json()) as { trip: { id: string } };
-    tripId = body.trip.id;
-  });
+    expect(tripRes.ok()).toBeTruthy();
+    const { trip } = (await tripRes.json()) as { trip: { id: string } };
+    const tripId = trip.id;
 
-  test("trip detail page renders trip info", async ({ page }) => {
-    await page.goto(`/trip/${tripId}`);
-    await expect(page.getByRole("heading", { name: /e2e itinerary trip/i })).toBeVisible({
-      timeout: 15000,
-    });
-    await expect(page.getByText(/HAN/)).toBeVisible();
-  });
-
-  test("Regenerate SG1 shows options", async ({ page }) => {
-    await page.route(`**/api/trips/${tripId}/generate-sg1`, async (route) => {
-      const body = route.request().method() === "POST" ? mockSg1Response : { options: [] };
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    });
+    // Seed chat history + draft plan directly so we can verify pure hydration.
+    const sql = dbClient();
+    const planMarkdown =
+      "# Japan Ski Trip\n\n## Travelers\n- 2 people\n\n## Destinations\n- Tokyo\n- Kyoto\n- Osaka\n\n## Must-have activities\n- Snow skiing";
+    await sql`UPDATE trips SET draft_plan = ${planMarkdown} WHERE id = ${tripId}`;
+    await sql`INSERT INTO chat_messages (trip_id, role, content) VALUES (${tripId}, 'user', 'Plan a ski trip to Japan in Feb 2027')`;
+    await sql`INSERT INTO chat_messages (trip_id, role, content) VALUES (${tripId}, 'model', 'Got it. What city are you flying from?')`;
 
     await page.goto(`/trip/${tripId}`);
-    await expect(page.getByRole("heading", { name: /trip options/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /e2e resume trip/i })).toBeVisible({
       timeout: 15000,
     });
-    await page.getByRole("button", { name: /regenerate/i }).click();
-    await expect(page.getByText(/cultural highlights/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/plan a ski trip to japan/i)).toBeVisible();
+    await expect(page.getByText(/what city are you flying from/i)).toBeVisible();
+
+    const plan = page.getByTestId("plan-panel");
+    await expect(plan).toBeVisible();
+    await expect(plan).toContainText(/japan ski trip/i);
+    await expect(plan).toContainText(/snow skiing/i);
+
+    // Default chat greeting should NOT show when history exists.
+    await expect(page.getByText(/where would you like to go/i)).toHaveCount(0);
   });
 
-  test("selecting SG1 option enables Build Full Itinerary button", async ({ page }) => {
-    await page.route(`**/api/trips/${tripId}/generate-sg1`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockSg1Response),
-      });
-    });
-
-    await page.goto(`/trip/${tripId}`);
-    await expect(page.getByRole("heading", { name: /trip options/i })).toBeVisible({
-      timeout: 15000,
-    });
-    await page.getByRole("button", { name: /regenerate/i }).click();
-    await page.getByText(/cultural highlights/i).click();
-    await expect(page.getByRole("button", { name: /build full itinerary/i })).toBeEnabled({
-      timeout: 10000,
-    });
-  });
-
-  test("SG2 build renders day-by-day itinerary", async ({ page }) => {
-    const mockItinerary: Partial<Itinerary> = {
-      id: "mock-itin-id",
-      tripId,
-      version: 1,
-      status: "current",
-      parentVersionId: null,
-      snapshotFlightDataJson: {
-        outbound: {
-          from: "HAN",
-          to: "NRT",
-          departureTime: "2026-08-01T23:20:00",
-          arrivalTime: "2026-08-02T07:30:00",
-          airline: "VN",
-          flightNumber: "VN310",
-          duration: 250,
-        },
-        totalPrice: 0,
-        currency: "USD",
-        bookingLink: "https://www.vietnamairlines.com",
-        provider: "airlabs",
-        priceAvailable: false,
+  test("trip header shows status, destination, and date range", async ({ page, request }) => {
+    const tripRes = await request.post("/api/trips", {
+      data: {
+        title: "E2E Header Trip",
+        originAirport: "HAN",
+        destinationCity: "Tokyo",
+        startDate: "2027-02-10",
+        endDate: "2027-02-20",
+        tripType: "round_trip",
       },
-      itineraryJson: [
-        {
-          day: 1,
-          date: "2026-08-01",
-          location: "Hanoi → Tokyo",
-          activities: ["Board VN310 at 23:20"],
-          notes: "Night flight",
-        },
-        {
-          day: 2,
-          date: "2026-08-02",
-          location: "Tokyo",
-          activities: ["Arrive NRT 07:30", "Explore Shinjuku"],
-          notes: null,
-        },
-      ],
-      cheapestTotalPrice: 0,
-      currency: "USD",
-      createdAt: new Date().toISOString() as unknown as Date,
-    };
-
-    await page.route(`**/api/trips/${tripId}/generate-sg1`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(mockSg1Response),
-      });
     });
-    await page.route(`**/api/trips/${tripId}/generate-sg2`, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ itinerary: mockItinerary }),
-      });
-    });
-
-    await page.goto(`/trip/${tripId}`);
-    await expect(page.getByRole("heading", { name: /trip options/i })).toBeVisible({
+    const { trip } = (await tripRes.json()) as { trip: { id: string } };
+    await page.goto(`/trip/${trip.id}`);
+    await expect(page.getByRole("heading", { name: /e2e header trip/i })).toBeVisible({
       timeout: 15000,
     });
-    await page.getByRole("button", { name: /regenerate/i }).click();
-    await expect(page.getByText(/cultural highlights/i)).toBeVisible({ timeout: 15000 });
-    await page.getByText(/cultural highlights/i).click();
-    await page.getByRole("button", { name: /build full itinerary/i }).click();
-    await expect(page.getByTestId("itinerary-view")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/Hanoi → Tokyo/i)).toBeVisible();
-    await expect(page.getByText(/VN310/i).first()).toBeVisible();
+    await expect(page.getByText(/HAN.*Tokyo/i)).toBeVisible();
+    await expect(page.getByText(/Round trip/i)).toBeVisible();
+    // Old SG1/SG2 UI must be gone.
+    await expect(page.getByRole("heading", { name: /trip options/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /build full itinerary/i })).toHaveCount(0);
   });
 });
