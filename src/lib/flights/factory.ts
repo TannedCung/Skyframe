@@ -1,4 +1,5 @@
 import { AirlabsFlightProvider } from "./airlabs";
+import { GoogleFlightsProvider } from "./google";
 import { KiwiTequilaFlightProvider } from "./kiwi";
 import { VietJetAirFlightProvider } from "./vietjet";
 import type { FlightProvider, FlightSearchParams, FlightOption } from "./types";
@@ -59,6 +60,12 @@ export function getFlightProvider(): CompositeFlightProvider {
     });
   }
 
+  // Google Flights: no API key, Chrome TLS impersonation via impers.
+  // Placed after Kiwi/VietJet (which have booking links), before AirLabs.
+  if (process.env["GOOGLE_FLIGHTS_ENABLED"] === "true") {
+    chain.push({ name: "google", provider: new GoogleFlightsProvider() });
+  }
+
   const airlabsKey = process.env["AIRLABS_API_KEY"];
   if (airlabsKey) {
     chain.push({ name: "airlabs", provider: new AirlabsFlightProvider(airlabsKey) });
@@ -103,6 +110,12 @@ export function getFlightProviderForUser(pref: GdsProvider): FlightProvider {
     const key = process.env["AIRLABS_API_KEY"];
     if (!key) throw Errors.serviceUnavailable("AirLabs (AIRLABS_API_KEY not set)");
     return new AirlabsFlightProvider(key);
+  }
+
+  if (pref === "google") {
+    if (process.env["GOOGLE_FLIGHTS_ENABLED"] !== "true")
+      throw Errors.serviceUnavailable("Google Flights (GOOGLE_FLIGHTS_ENABLED not set)");
+    return new GoogleFlightsProvider();
   }
 
   return getFlightProvider();

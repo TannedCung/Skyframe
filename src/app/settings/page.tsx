@@ -25,6 +25,11 @@ const GDS_OPTIONS: { value: GdsProvider; label: string; description: string }[] 
     description: "VND prices — requires the token service to be running",
   },
   { value: "airlabs", label: "AirLabs", description: "Schedule data only, no pricing" },
+  {
+    value: "google",
+    label: "Google Flights",
+    description: "Google's flight search engine — no API key needed",
+  },
 ];
 const TIMEZONES = [
   "UTC",

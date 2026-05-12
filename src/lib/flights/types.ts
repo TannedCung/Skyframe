@@ -14,7 +14,7 @@ export interface FlightSearchParams {
 }
 
 export interface FlightOption {
-  provider: "airlabs" | "kiwi" | "vietjet" | "amadeus" | "other";
+  provider: "airlabs" | "kiwi" | "vietjet" | "amadeus" | "google" | "other";
   price: number;
   currency: string;
   /** false when the provider does not supply pricing (e.g. AirLabs) */

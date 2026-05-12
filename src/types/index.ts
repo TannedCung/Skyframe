@@ -4,7 +4,7 @@ export type FlightTimePreference = "day" | "night" | "any";
 export type ItineraryStatus = "current" | "superseded";
 export type WatcherRole = "owner" | "viewer";
 export type NotificationType = "price_change" | "new_itinerary_version" | "invite";
-export type GdsProvider = "auto" | "kiwi" | "vietjet" | "airlabs";
+export type GdsProvider = "auto" | "kiwi" | "vietjet" | "airlabs" | "google";
 
 export interface User {
   id: string;

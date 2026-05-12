@@ -103,6 +103,7 @@ function handleListProviders() {
     vietjet:
       !!process.env["VIETJET_TOKEN_SERVICE_URL"] && !!process.env["VIETJET_TOKEN_SERVICE_SECRET"],
     airlabs: !!process.env["AIRLABS_API_KEY"],
+    google: process.env["GOOGLE_FLIGHTS_ENABLED"] === "true",
   };
 }
 
