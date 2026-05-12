@@ -48,12 +48,12 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
                 <p className="font-semibold text-ink-900">
                   {option.entryCity} → {option.exitCity}
                 </p>
-                <p className="text-sm text-coral-600 font-medium mt-0.5">{option.theme}</p>
+                <p className="text-sm text-coral-700 font-medium mt-0.5">{option.theme}</p>
                 {option.description && (
                   <p className="text-sm text-ink-500 mt-1">{option.description}</p>
                 )}
               </div>
-              <div className="text-right text-xs text-ink-400 shrink-0 ml-4">
+              <div className="text-right text-xs text-ink-400 shrink-0 ml-4 font-mono">
                 <p>{option.airports.entry}</p>
                 <p>→ {option.airports.exit}</p>
                 <p className="mt-1">
@@ -61,7 +61,7 @@ export function SG1OptionList({ options, onSelect, selectedId, loading }: SG1Opt
                 </p>
               </div>
             </div>
-            {isSelected && <p className="text-xs text-coral-600 font-medium mt-2">Selected</p>}
+            {isSelected && <p className="text-xs text-coral-700 font-medium mt-2">Selected</p>}
           </button>
         );
       })}

@@ -7,6 +7,7 @@ import { ItineraryView } from "@/components/ItineraryView";
 import { SG1OptionList } from "@/components/SG1OptionList";
 import { InvitePanel } from "@/components/InvitePanel";
 import { AppHeader } from "@/components/AppHeader";
+import { StatusBadge } from "@/components/StatusBadge";
 import type { Trip, Itinerary, SG1Option } from "@/types";
 
 interface TripDetailData {
@@ -142,10 +143,15 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
     window.history.replaceState({}, "", url.toString());
   }
 
+  const crumbs = [
+    { label: "My Trips", href: "/dashboard" },
+    { label: loading ? "…" : (data?.trip.title ?? "Trip") },
+  ];
+
   if (loading || status === "loading") {
     return (
       <>
-        <AppHeader />
+        <AppHeader crumbs={crumbs} />
         <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -156,7 +162,7 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   if (fetchError || !data) {
     return (
       <>
-        <AppHeader />
+        <AppHeader crumbs={crumbs} />
         <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="text-center">
             <p className="text-ink-500 mb-4">{fetchError ?? "Trip not found"}</p>
@@ -173,41 +179,99 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const { trip, currentItinerary } = data;
+  const destination = trip.destinationCity ?? trip.destinationCountry ?? "Adventure";
+  const durationDays = Math.ceil(
+    (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24),
+  );
 
   return (
     <>
-      <AppHeader />
+      <AppHeader crumbs={[{ label: "My Trips", href: "/dashboard" }, { label: trip.title }]} />
       <main className="min-h-screen bg-cream-100">
-        <div className="max-w-5xl mx-auto p-8">
+        {/* Editorial trip hero */}
+        <div className="max-w-5xl mx-auto px-8 pt-8">
+          <div
+            className="rounded-2xl overflow-hidden border-2"
+            style={{ borderColor: "#2A1E15", background: "#FFF6DE" }}
+          >
+            <div className="grid md:grid-cols-5 gap-0">
+              <div
+                className="md:col-span-2 relative flex items-center justify-center"
+                style={{ minHeight: 240, background: "#8BDFDD" }}
+              >
+                <span className="text-ink-800 text-sm font-mono uppercase tracking-wider opacity-40">
+                  {destination}
+                </span>
+              </div>
+              <div
+                className="md:col-span-3 p-7 flex flex-col justify-between"
+                style={{ background: "#FFF6DE" }}
+              >
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <StatusBadge status={trip.status} />
+                    <span
+                      className="text-[11px] font-mono uppercase tracking-[0.18em]"
+                      style={{ color: "#6B5A4D" }}
+                    >
+                      {trip.originAirport} → {destination}
+                    </span>
+                  </div>
+                  <h1
+                    className="display-tight font-bold mb-3"
+                    style={{
+                      fontSize: "clamp(28px, 4vw, 44px)",
+                      lineHeight: 1.05,
+                      color: "#2A1E15",
+                    }}
+                  >
+                    {trip.title}
+                  </h1>
+                  <p className="text-base text-ink-800">
+                    {new Date(trip.startDate).toLocaleDateString()} –{" "}
+                    {new Date(trip.endDate).toLocaleDateString()}
+                    {trip.flexibilityDays > 0 && (
+                      <span className="text-ink-500"> · ±{trip.flexibilityDays} days flex</span>
+                    )}
+                  </p>
+                </div>
+                <div
+                  className="flex flex-wrap gap-2 mt-5 pt-5 border-t"
+                  style={{ borderColor: "#EFE4C8" }}
+                >
+                  <span
+                    className="text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full"
+                    style={{ background: "#F8EDC9", color: "#6B5A4D" }}
+                  >
+                    {durationDays} days
+                  </span>
+                  <span
+                    className="text-[11px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-full"
+                    style={{ background: "#E5F8F7", color: "#1F6E6B" }}
+                  >
+                    {trip.tripType === "round_trip" ? "Round trip" : "One way"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-5xl mx-auto p-8 pt-6">
           {inviteToken && <InviteBanner tripId={id} token={inviteToken} onDone={dismissInvite} />}
 
-          <div className="mb-6">
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="text-sm text-ink-400 hover:text-ink-700 mb-3 flex items-center gap-1"
-            >
-              ← Dashboard
-            </button>
-            <h1 className="text-3xl font-bold text-ink-900">{trip.title}</h1>
-            <p className="text-ink-500 mt-1">
-              {trip.originAirport} → {trip.destinationCity ?? trip.destinationCountry ?? "Flexible"}{" "}
-              | {new Date(trip.startDate).toLocaleDateString()} –{" "}
-              {new Date(trip.endDate).toLocaleDateString()}
-            </p>
-          </div>
-
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* Left column: SG1 options */}
+            {/* Left: SG1 + Invite */}
             <div className="lg:col-span-1 space-y-4">
               <div className="bg-white rounded-xl border border-line p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold text-ink-900">Trip Options</h2>
+                  <h2 className="display-h2 font-semibold text-ink-900 text-lg">Trip Options</h2>
                   <button
                     onClick={generateSG1}
                     disabled={loadingSg1}
-                    className="text-sm text-coral-600 font-medium disabled:opacity-50 hover:text-coral-700"
+                    className="text-sm text-coral-700 font-medium disabled:opacity-50 hover:text-coral-600 transition-colors"
                   >
-                    {loadingSg1 ? "Generating..." : "Regenerate"}
+                    {loadingSg1 ? "Generating…" : "Regenerate"}
                   </button>
                 </div>
                 <SG1OptionList
@@ -220,17 +284,16 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
                   <button
                     onClick={() => generateSG2(selectedSg1)}
                     disabled={loadingSg2}
-                    className="w-full mt-4 bg-coral-500 text-ink-900 py-2 rounded-lg font-semibold disabled:opacity-50 hover:bg-coral-600 transition-colors"
+                    className="w-full mt-4 bg-coral-500 text-ink-900 py-2.5 rounded-lg font-semibold disabled:opacity-50 hover:bg-coral-600 transition-colors"
                   >
-                    {loadingSg2 ? "Building Itinerary..." : "Build Full Itinerary →"}
+                    {loadingSg2 ? "Building Itinerary…" : "Build Full Itinerary →"}
                   </button>
                 )}
               </div>
-
               <InvitePanel tripId={id} />
             </div>
 
-            {/* Right column: Itinerary */}
+            {/* Right: Itinerary */}
             <div className="lg:col-span-2">
               {currentItinerary ? (
                 <ItineraryView itinerary={currentItinerary} />

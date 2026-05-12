@@ -37,6 +37,24 @@
   --color-line-soft: #F5ECD2;
 }
 
+@utility display-hero {
+  font-family: 'Bricolage Grotesque', ui-sans-serif, sans-serif;
+  letter-spacing: -0.035em;
+  font-variation-settings: 'wdth' 90, 'opsz' 96;
+}
+
+@utility display-tight {
+  font-family: 'Bricolage Grotesque', ui-sans-serif, sans-serif;
+  letter-spacing: -0.022em;
+  font-variation-settings: 'wdth' 92, 'opsz' 48;
+}
+
+@utility display-h2 {
+  font-family: 'Bricolage Grotesque', ui-sans-serif, sans-serif;
+  letter-spacing: -0.012em;
+  font-variation-settings: 'wdth' 95, 'opsz' 24;
+}
+
 @layer base {
   body {
     background-color: #FFF6DE;

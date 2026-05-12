@@ -24,10 +24,12 @@ export default function NewTripPage() {
     tripType: "round_trip" as "round_trip" | "one_way",
   });
 
+  const crumbs = [{ label: "My Trips", href: "/dashboard" }, { label: "Plan a New Trip" }];
+
   if (status === "loading") {
     return (
       <>
-        <AppHeader />
+        <AppHeader crumbs={crumbs} />
         <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -64,18 +66,11 @@ export default function NewTripPage() {
 
   return (
     <>
-      <AppHeader />
+      <AppHeader crumbs={crumbs} />
       <main className="min-h-screen bg-cream-100 p-8">
         <div className="max-w-2xl mx-auto">
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="text-sm text-ink-400 hover:text-ink-700 mb-6 flex items-center gap-1"
-          >
-            ← Dashboard
-          </button>
-
           <div className="bg-white rounded-2xl border border-line p-8">
-            <h1 className="text-2xl font-bold text-ink-900 mb-6">Plan a New Trip</h1>
+            <h1 className="display-tight text-2xl font-bold text-ink-900 mb-6">Plan a New Trip</h1>
 
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

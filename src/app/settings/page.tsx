@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -72,10 +72,12 @@ export default function SettingsPage() {
     }
   }
 
+  const crumbs = [{ label: "My Trips", href: "/dashboard" }, { label: "Settings" }];
+
   if (status === "loading" || loading) {
     return (
       <>
-        <AppHeader />
+        <AppHeader crumbs={crumbs} />
         <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -85,14 +87,14 @@ export default function SettingsPage() {
 
   return (
     <>
-      <AppHeader />
+      <AppHeader crumbs={crumbs} />
       <main className="min-h-screen bg-cream-100 p-8">
         <div className="max-w-xl mx-auto space-y-6">
-          <h1 className="text-3xl font-bold text-ink-900">Settings</h1>
+          <h1 className="display-tight text-4xl font-bold text-ink-900">Settings</h1>
 
           {/* Profile card */}
           <div className="bg-white rounded-xl border border-line p-6 space-y-4">
-            <h2 className="font-semibold text-ink-900">Profile</h2>
+            <h2 className="display-h2 font-semibold text-ink-900">Profile</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-ink-500 mb-1">Name</p>
@@ -103,6 +105,15 @@ export default function SettingsPage() {
                 <p className="font-medium text-ink-900 text-sm">{session?.user?.email ?? "—"}</p>
               </div>
             </div>
+            <div className="pt-4 border-t border-line">
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="font-semibold transition-colors"
+                style={{ color: "#D85A45" }}
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
 
           {/* Preferences form */}
@@ -110,7 +121,7 @@ export default function SettingsPage() {
             onSubmit={handleSave}
             className="bg-white rounded-xl border border-line p-6 space-y-5"
           >
-            <h2 className="font-semibold text-ink-900">Preferences</h2>
+            <h2 className="display-h2 font-semibold text-ink-900">Preferences</h2>
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

@@ -9,16 +9,18 @@ import type { Trip } from "@/types";
 
 function TripCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-line p-5 animate-pulse space-y-3">
-      <div className="h-4 bg-cream-200 rounded w-2/3" />
-      <div className="h-3 bg-cream-200 rounded w-1/2" />
-      <div className="h-3 bg-cream-200 rounded w-1/3" />
+    <div className="bg-white rounded-2xl border border-line overflow-hidden animate-pulse">
+      <div className="h-24 bg-cream-200" />
+      <div className="p-5 space-y-3">
+        <div className="h-4 bg-cream-200 rounded w-2/3" />
+        <div className="h-3 bg-cream-200 rounded w-1/2" />
+      </div>
     </div>
   );
 }
 
 export default function DashboardPage() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +42,7 @@ export default function DashboardPage() {
   if (status === "loading") {
     return (
       <>
-        <AppHeader />
+        <AppHeader crumbs={[{ label: "My Trips" }]} />
         <div className="min-h-screen flex items-center justify-center bg-cream-100">
           <div className="w-8 h-8 border-4 border-coral-500 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -50,14 +52,19 @@ export default function DashboardPage() {
 
   return (
     <>
-      <AppHeader />
+      <AppHeader crumbs={[{ label: "My Trips" }]} />
       <main className="min-h-screen bg-cream-100 p-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-ink-900">My Trips</h1>
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-end justify-between mb-8">
+            <div>
+              <h1 className="display-tight text-4xl font-bold text-ink-900">My Trips</h1>
+              {session?.user?.name && (
+                <p className="text-ink-500 mt-1">Welcome back, {session.user.name}</p>
+              )}
+            </div>
             <button
               onClick={() => router.push("/trip/new")}
-              className="bg-coral-500 text-ink-900 px-5 py-2 rounded-lg font-semibold hover:bg-coral-600 transition-colors"
+              className="bg-coral-500 text-ink-900 px-5 py-2.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors"
             >
               + New Trip
             </button>
