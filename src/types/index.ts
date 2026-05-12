@@ -4,6 +4,7 @@ export type FlightTimePreference = "day" | "night" | "any";
 export type ItineraryStatus = "current" | "superseded";
 export type WatcherRole = "owner" | "viewer";
 export type NotificationType = "price_change" | "new_itinerary_version" | "invite";
+export type GdsProvider = "auto" | "kiwi" | "vietjet" | "airlabs";
 
 export interface User {
   id: string;
@@ -13,6 +14,7 @@ export interface User {
   notificationEmail: boolean;
   defaultCurrency: string;
   timezone: string;
+  gdsProvider: GdsProvider;
   createdAt: Date;
 }
 
@@ -20,6 +22,7 @@ export interface UserPreferences {
   notificationEmail: boolean;
   defaultCurrency: string;
   timezone: string;
+  gdsProvider: GdsProvider;
 }
 
 export interface Trip {

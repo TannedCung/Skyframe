@@ -13,6 +13,7 @@ export interface CreateTripInput {
   preferenceCheapest?: boolean;
   preferenceFlightTime?: FlightTimePreference;
   tripType?: TripType;
+  status?: TripStatus;
 }
 
 export async function createTrip(input: CreateTripInput): Promise<Trip> {
@@ -20,13 +21,14 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
     INSERT INTO trips (
       user_id, title, origin_airport, destination_city, destination_country,
       start_date, end_date, flexibility_days, preference_cheapest,
-      preference_flight_time, trip_type
+      preference_flight_time, trip_type, status
     ) VALUES (
       ${input.userId}, ${input.title}, ${input.originAirport},
       ${input.destinationCity ?? null}, ${input.destinationCountry ?? null},
       ${input.startDate}, ${input.endDate},
       ${input.flexibilityDays ?? 0}, ${input.preferenceCheapest ?? true},
-      ${input.preferenceFlightTime ?? "any"}, ${input.tripType ?? "round_trip"}
+      ${input.preferenceFlightTime ?? "any"}, ${input.tripType ?? "round_trip"},
+      ${input.status ?? "active"}
     )
     RETURNING *
   `;
@@ -75,6 +77,38 @@ export async function getActiveTripsForRefresh(): Promise<Trip[]> {
 
 export async function deleteTrip(id: string, userId: string): Promise<void> {
   await sql`DELETE FROM trips WHERE id = ${id} AND user_id = ${userId}`;
+}
+
+export interface TripChatFields {
+  // MUST fields — required before finalize
+  destinationCity?: string;
+  originAirport?: string;
+  startDate?: string;
+  endDate?: string;
+  // OPTIONAL fields
+  title?: string;
+  destinationCountry?: string;
+  tripType?: TripType;
+  preferenceCheapest?: boolean;
+  preferenceFlightTime?: FlightTimePreference;
+  flexibilityDays?: number;
+}
+
+export async function updateTripFields(id: string, f: TripChatFields): Promise<void> {
+  await sql`
+    UPDATE trips SET
+      title               = COALESCE(${f.title ?? null}, title),
+      destination_city    = COALESCE(${f.destinationCity ?? null}, destination_city),
+      destination_country = COALESCE(${f.destinationCountry ?? null}, destination_country),
+      origin_airport      = COALESCE(${f.originAirport ?? null}, origin_airport),
+      start_date          = COALESCE(${f.startDate ?? null}::date, start_date),
+      end_date            = COALESCE(${f.endDate ?? null}::date, end_date),
+      trip_type           = COALESCE(${f.tripType ?? null}, trip_type),
+      preference_cheapest = COALESCE(${f.preferenceCheapest ?? null}, preference_cheapest),
+      preference_flight_time = COALESCE(${f.preferenceFlightTime ?? null}, preference_flight_time),
+      flexibility_days    = COALESCE(${f.flexibilityDays ?? null}, flexibility_days)
+    WHERE id = ${id}
+  `;
 }
 
 function rowToTrip(row: Record<string, unknown>): Trip {

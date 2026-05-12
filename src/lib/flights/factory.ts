@@ -2,6 +2,8 @@ import { AirlabsFlightProvider } from "./airlabs";
 import { KiwiTequilaFlightProvider } from "./kiwi";
 import { VietJetAirFlightProvider } from "./vietjet";
 import type { FlightProvider, FlightSearchParams, FlightOption } from "./types";
+import type { GdsProvider } from "@/types";
+import { Errors } from "@/lib/errors";
 import logger from "@/lib/logger";
 
 /** Tries AirLabs (primary) then Kiwi (fallback). */
@@ -73,4 +75,35 @@ export function getFlightProvider(): CompositeFlightProvider {
 /** Reset singleton — useful in tests. */
 export function resetFlightProvider(): void {
   _provider = null;
+}
+
+/**
+ * Returns a single-provider instance matching the user's GDS preference.
+ * Falls back to the composite chain for 'auto'.
+ * Does NOT cache — call site should be per-request.
+ */
+export function getFlightProviderForUser(pref: GdsProvider): FlightProvider {
+  if (pref === "auto") return getFlightProvider();
+
+  if (pref === "kiwi") {
+    const key = process.env["KIWI_API_KEY"];
+    if (!key) throw Errors.serviceUnavailable("Kiwi Tequila (KIWI_API_KEY not set)");
+    return new KiwiTequilaFlightProvider(key);
+  }
+
+  if (pref === "vietjet") {
+    const url = process.env["VIETJET_TOKEN_SERVICE_URL"];
+    const secret = process.env["VIETJET_TOKEN_SERVICE_SECRET"];
+    if (!url || !secret)
+      throw Errors.serviceUnavailable("VietJet token service (env vars not set)");
+    return new VietJetAirFlightProvider({ serviceUrl: url, serviceSecret: secret });
+  }
+
+  if (pref === "airlabs") {
+    const key = process.env["AIRLABS_API_KEY"];
+    if (!key) throw Errors.serviceUnavailable("AirLabs (AIRLABS_API_KEY not set)");
+    return new AirlabsFlightProvider(key);
+  }
+
+  return getFlightProvider();
 }

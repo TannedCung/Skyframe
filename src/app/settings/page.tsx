@@ -4,9 +4,28 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
-import type { UserPreferences } from "@/types";
+import type { UserPreferences, GdsProvider } from "@/types";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "SGD", "VND", "THB"];
+
+const GDS_OPTIONS: { value: GdsProvider; label: string; description: string }[] = [
+  {
+    value: "auto",
+    label: "Auto (recommended)",
+    description: "Tries all configured providers in priority order",
+  },
+  {
+    value: "kiwi",
+    label: "Kiwi Tequila",
+    description: "Real-time prices with global route coverage",
+  },
+  {
+    value: "vietjet",
+    label: "VietJet Air",
+    description: "VND prices — requires the token service to be running",
+  },
+  { value: "airlabs", label: "AirLabs", description: "Schedule data only, no pricing" },
+];
 const TIMEZONES = [
   "UTC",
   "Asia/Ho_Chi_Minh",
@@ -28,6 +47,7 @@ export default function SettingsPage() {
     notificationEmail: true,
     defaultCurrency: "USD",
     timezone: "UTC",
+    gdsProvider: "auto",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -193,6 +213,39 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* GDS provider selection */}
+            <div>
+              <p className="text-sm font-medium text-ink-700 mb-2">Flight Data Source</p>
+              <p className="text-xs text-ink-500 mb-3">
+                Choose which provider to use when searching for flights
+              </p>
+              <div className="space-y-2">
+                {GDS_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      prefs.gdsProvider === opt.value
+                        ? "border-coral-500 bg-coral-50"
+                        : "border-cream-300 hover:border-cream-400"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="gdsProvider"
+                      value={opt.value}
+                      checked={prefs.gdsProvider === opt.value}
+                      onChange={() => setPrefs((p) => ({ ...p, gdsProvider: opt.value }))}
+                      className="mt-0.5 accent-coral-500"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-ink-800">{opt.label}</p>
+                      <p className="text-xs text-ink-500 mt-0.5">{opt.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
 
             <button

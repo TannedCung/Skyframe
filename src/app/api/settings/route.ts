@@ -3,7 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getUserById, updateUserPreferences } from "@/lib/db/queries/users";
 import { apiError, Errors } from "@/lib/errors";
-import type { UserPreferences } from "@/types";
+import type { UserPreferences, GdsProvider } from "@/types";
+
+const GDS_PROVIDERS: GdsProvider[] = ["auto", "kiwi", "vietjet", "airlabs"];
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -20,6 +22,7 @@ export async function GET(): Promise<NextResponse> {
       notificationEmail: user.notificationEmail,
       defaultCurrency: user.defaultCurrency,
       timezone: user.timezone,
+      gdsProvider: user.gdsProvider,
     });
   } catch (error) {
     return apiError(error);
@@ -36,10 +39,14 @@ export async function PATCH(request: Request): Promise<NextResponse> {
 
     const body = (await request.json()) as Partial<UserPreferences>;
 
+    const rawGds = body.gdsProvider;
+    const gdsProvider: GdsProvider = rawGds && GDS_PROVIDERS.includes(rawGds) ? rawGds : "auto";
+
     const prefs: UserPreferences = {
       notificationEmail: body.notificationEmail ?? true,
       defaultCurrency: body.defaultCurrency ?? "USD",
       timezone: body.timezone ?? "UTC",
+      gdsProvider,
     };
 
     const user = await updateUserPreferences(userId, prefs);
@@ -48,6 +55,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       notificationEmail: user.notificationEmail,
       defaultCurrency: user.defaultCurrency,
       timezone: user.timezone,
+      gdsProvider: user.gdsProvider,
     });
   } catch (error) {
     return apiError(error);

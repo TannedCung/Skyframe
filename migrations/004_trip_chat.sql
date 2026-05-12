@@ -1,0 +1,2 @@
+ALTER TABLE trips
+  ADD COLUMN IF NOT EXISTS chat_session_id TEXT;
