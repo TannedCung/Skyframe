@@ -97,7 +97,8 @@ function toolsToOpenAI(toolsDict: LlmRequest["toolsDict"]): ChatCompletionTool[]
 // ─── Custom BaseLlm for OpenAI ───────────────────────────────────────────────
 
 export class OpenAILlm extends BaseLlm {
-  static readonly supportedModels: Array<string | RegExp> = [/^gpt-/, /^o[0-9]/];
+  // LLMRegistry wraps these patterns with ^...$ during resolve, so do NOT add anchors.
+  static readonly supportedModels: Array<string | RegExp> = [/gpt-.*/, /o[0-9].*/];
 
   constructor({ model }: { model: string }) {
     super({ model });
