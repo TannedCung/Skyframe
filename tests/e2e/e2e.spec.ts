@@ -126,19 +126,23 @@ const SKI_TRIP_PROMPT =
 
 const SKI_PLAN_MARKDOWN = `# Japan Ski Trip (Feb 2027)
 
-## Travelers
-- 2 people — you and your partner
+## Brief
+- **Travelers**: 2 people — you and your partner
+- **Dates**: 2027-02-10 → 2027-02-20 (10 nights)
+- **Origin**: Hanoi (HAN)
+- **Preferences**: Snow skiing is a must
 
 ## Destinations
-- Tokyo (home base)
-- Kyoto
-- Osaka
-
-## Dates
-- 2027-02-10 → 2027-02-20 (10 nights)
+- **Primary**: Tokyo (home base)
+- **Secondary**: Kyoto, Osaka
 
 ## Must-have activities
 - Snow skiing — likely Hakuba or Nozawa Onsen day trip
+
+## Flights
+| Airline | Flight # | Departure | Arrival | Price |
+|---|---|---|---|---|
+| VietJet | VJ123 | 08:00 | 13:00 | 5,000,000 VND |
 
 ## Notes
 - South Japan loop after a few days in Tokyo
@@ -298,7 +302,7 @@ test.describe("Trip detail (chat resume)", () => {
     // Seed chat history + draft plan directly so we can verify pure hydration.
     const sql = dbClient();
     const planMarkdown =
-      "# Japan Ski Trip\n\n## Travelers\n- 2 people\n\n## Destinations\n- Tokyo\n- Kyoto\n- Osaka\n\n## Must-have activities\n- Snow skiing";
+      "# Japan Ski Trip\n\n## Brief\n- **Travelers**: 2 people\n\n## Destinations\n- **Primary**: Tokyo\n- **Secondary**: Kyoto, Osaka\n\n## Must-have activities\n- Snow skiing";
     await sql`UPDATE trips SET draft_plan = ${planMarkdown} WHERE id = ${tripId}`;
     await sql`INSERT INTO chat_messages (trip_id, role, content) VALUES (${tripId}, 'user', 'Plan a ski trip to Japan in Feb 2027')`;
     await sql`INSERT INTO chat_messages (trip_id, role, content) VALUES (${tripId}, 'model', 'Got it. What city are you flying from?')`;

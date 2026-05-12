@@ -23,8 +23,10 @@ interface TripChatUIProps {
 
 const GREETING: Message = {
   role: "model",
-  content: "Hi! Where would you like to go? ✈️",
+  content: "Hi! Where would you like to go?",
 };
+
+const SPLIT_STORAGE_KEY = "skyframe:splitRatio";
 
 export function TripChatUI({
   initialTripId,
@@ -44,9 +46,71 @@ export function TripChatUI({
   const [tripId, setTripId] = useState<string | null>(initialTripId ?? null);
   const [planMarkdown, setPlanMarkdown] = useState<string | null>(initialPlanMarkdown ?? null);
   const [quoteHint, setQuoteHint] = useState(false);
+  const [chatRatio, setChatRatio] = useState(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem(SPLIT_STORAGE_KEY) : null;
+    return stored ? clampRatio(parseFloat(stored)) : 0.4;
+  });
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const planPanelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+
+  function clampRatio(v: number) {
+    return Math.min(0.6, Math.max(0.25, v));
+  }
+
+  // Draggable divider
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onMove = (clientX: number) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = (clientX - rect.left) / rect.width;
+      const clamped = clampRatio(ratio);
+      setChatRatio(clamped);
+      localStorage.setItem(SPLIT_STORAGE_KEY, String(clamped));
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      e.preventDefault();
+      onMove(e.clientX);
+    };
+
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging.current) return;
+      e.preventDefault();
+      onMove(e.touches[0]!.clientX);
+    };
+
+    const onTouchEnd = onMouseUp;
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchend", onTouchEnd);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
+  const startDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    isDragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -230,38 +294,48 @@ export function TripChatUI({
 
   const showPlan = !!planMarkdown;
 
+  const renderedMessages = useMemo(
+    () =>
+      messages.map((msg, i) => (
+        <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+              msg.role === "user"
+                ? "bg-coral-500 text-ink-900 whitespace-pre-wrap"
+                : "bg-white border border-line text-ink-800"
+            }`}
+          >
+            {msg.content ? (
+              msg.role === "model" ? (
+                renderMarkdown(msg.content)
+              ) : (
+                msg.content
+              )
+            ) : msg.streaming ? (
+              <span className="inline-flex gap-1 text-ink-400">
+                <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
+                  •
+                </span>
+                <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
+                  •
+                </span>
+                <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
+                  •
+                </span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )),
+    [messages],
+  );
+
   const chatPanel = (
     <div data-testid="chat-panel" className="flex flex-col h-full bg-cream-100">
       <div className="flex-1 overflow-y-auto py-4 space-y-4 px-4 sm:px-6">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                msg.role === "user"
-                  ? "bg-coral-500 text-ink-900"
-                  : "bg-white border border-line text-ink-800"
-              }`}
-            >
-              {msg.content ||
-                (msg.streaming ? (
-                  <span className="inline-flex gap-1 text-ink-400">
-                    <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
-                      •
-                    </span>
-                    <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
-                      •
-                    </span>
-                    <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
-                      •
-                    </span>
-                  </span>
-                ) : null)}
-            </div>
-          </div>
-        ))}
+        {renderedMessages}
         <div ref={bottomRef} />
       </div>
-
       <div className="border-t border-line bg-white px-4 sm:px-6 pt-3 pb-4">
         <div className="flex gap-3 items-end max-w-3xl mx-auto">
           <textarea
@@ -317,10 +391,14 @@ export function TripChatUI({
   );
 
   return (
-    <div className="h-full w-full">
+    <div ref={containerRef} className="h-full w-full relative">
       <div
-        className="grid h-full transition-[grid-template-columns] duration-500 ease-out"
-        style={{ gridTemplateColumns: showPlan ? "30% 70%" : "100% 0%" }}
+        className="grid h-full transition-[grid-template-columns] duration-300 ease-out"
+        style={{
+          gridTemplateColumns: showPlan
+            ? `${chatRatio * 100}% ${(1 - chatRatio) * 100}%`
+            : "100% 0%",
+        }}
       >
         <div className="min-w-0 overflow-hidden">
           <div className={showPlan ? "w-full h-full" : "max-w-3xl mx-auto h-full"}>{chatPanel}</div>
@@ -328,13 +406,23 @@ export function TripChatUI({
         <div
           data-testid={showPlan ? "plan-panel" : undefined}
           aria-hidden={!showPlan}
-          className={`min-w-0 overflow-hidden transition-opacity duration-500 ease-out ${
+          className={`min-w-0 overflow-hidden transition-opacity duration-300 ease-out ${
             showPlan ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
           {showPlan && planPanel}
         </div>
       </div>
+      {showPlan && (
+        <div
+          onMouseDown={startDrag}
+          onTouchStart={startDrag}
+          className="absolute top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-teal-400/30 active:bg-teal-400/40 transition-colors z-10"
+          style={{
+            left: `calc(${chatRatio * 100}% - 3px)`,
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -346,6 +434,40 @@ function renderMarkdown(md: string): React.ReactNode {
   const out: React.ReactNode[] = [];
   let listBuffer: string[] = [];
   let paraBuffer: string[] = [];
+  let tableRows: string[][] = [];
+  let tableHeader: string[] = [];
+
+  function flushTable() {
+    if (tableHeader.length === 0) return;
+    out.push(
+      <div key={`tbl-${out.length}`} className="my-3 overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-cream-100">
+              {tableHeader.map((h, i) => (
+                <th key={i} className="border border-line px-3 py-2 text-left font-semibold">
+                  {renderInline(h)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tableRows.map((row, ri) => (
+              <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-cream-50"}>
+                {row.map((cell, ci) => (
+                  <td key={ci} className="border border-line px-3 py-2">
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>,
+    );
+    tableHeader = [];
+    tableRows = [];
+  }
 
   function flushList() {
     if (listBuffer.length === 0) return;
@@ -373,15 +495,41 @@ function renderMarkdown(md: string): React.ReactNode {
     const line = rawLine.replace(/\s+$/, "");
 
     if (line.trim() === "") {
+      flushTable();
       flushList();
       flushPara();
       continue;
+    }
+
+    // Table separator row: |---|---|---|
+    if (/^\|[\s-:|]+\|$/.test(line)) {
+      continue;
+    }
+
+    // Table row: | cell | cell | cell |
+    const tableMatch = /^\|(.+)\|$/.exec(line);
+    if (tableMatch) {
+      flushList();
+      flushPara();
+      const cells = tableMatch[1]!.split("|").map((c) => c.trim());
+      if (tableHeader.length === 0) {
+        tableHeader = cells;
+      } else {
+        tableRows.push(cells);
+      }
+      continue;
+    }
+
+    // If we were building a table but hit a non-table line, flush it
+    if (tableHeader.length > 0) {
+      flushTable();
     }
 
     const h3 = /^###\s+(.*)$/.exec(line);
     const h2 = /^##\s+(.*)$/.exec(line);
     const h1 = /^#\s+(.*)$/.exec(line);
     const li = /^[-*]\s+(.*)$/.exec(line);
+    const bq = /^>\s+(.*)$/.exec(line);
 
     if (h1 || h2 || h3) {
       flushList();
@@ -417,10 +565,25 @@ function renderMarkdown(md: string): React.ReactNode {
       continue;
     }
 
+    if (bq) {
+      flushList();
+      flushPara();
+      out.push(
+        <blockquote
+          key={`bq-${out.length}`}
+          className="border-l-4 border-teal-400 pl-3 py-1 my-2 text-ink-600 italic"
+        >
+          {renderInline(bq[1]!)}
+        </blockquote>,
+      );
+      continue;
+    }
+
     flushList();
     paraBuffer.push(line);
   }
 
+  flushTable();
   flushList();
   flushPara();
   return out;
