@@ -119,15 +119,49 @@ async function doSearch(
     stepStart = Date.now();
     await dismissPromo(page);
 
-    // Explicitly click the date display field to open the calendar
-    // The "Ngày đi" (departure date) field is a <p> element that opens a date picker
+    // Try multiple approaches to set the date:
+    // a) Check for native date input
+    // b) Click the date display field
+    // c) Directly set date via page.evaluate on the form state
+
+    // First check what date-related elements exist
+    const dateElements = await page.evaluate(() => {
+      const dateInputs = Array.from(document.querySelectorAll("input[type='date'], input[type='text'][name*='date'], input[name*='Date']"));
+      return dateInputs.map((el) => ({
+        tag: el.tagName,
+        type: (el as HTMLInputElement).type,
+        name: el.getAttribute("name") ?? "",
+        value: (el as HTMLInputElement).value ?? "",
+        class: el.getAttribute("class") ?? "",
+        visible: (el as HTMLElement).offsetParent !== null,
+      }));
+    });
+    logger.info({ dateElements }, "Date-related elements found");
+
+    // Try to set date via JS — find any hidden date inputs or form state
+    if (dateElements.length > 0) {
+      const formattedDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      await page.evaluate(({ date }) => {
+        // Try to set date on any date inputs
+        const inputs = document.querySelectorAll("input[type='date'], input[type='text'][name*='date'], input[name*='Date']");
+        for (const input of Array.from(inputs)) {
+          const el = input as HTMLInputElement;
+          el.value = date;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }, { date: formattedDate });
+      await page.waitForTimeout(500);
+    }
+
+    // Click date field to open picker
     const dateField = page.locator("p.jss177, p[class*='MuiTypography'], [class*='date-display']").first();
     if (await dateField.count() > 0) {
       await dateField.click({ force: true });
-      await page.waitForTimeout(1000);
-      logger.info("Date field clicked, waiting for calendar to open");
+      await page.waitForTimeout(1500);
     }
 
+    // Now try the calendar selection (may or may not work)
     await setOnewayAndDate(page, year!, month!, day!);
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
