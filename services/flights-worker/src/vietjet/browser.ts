@@ -26,11 +26,38 @@ export async function searchVietJetFlights(
   destination: string,
   departDate: string, // YYYY-MM-DD
 ): Promise<VietJetSearchResult> {
-  logger.info({ origin, destination, departDate }, "Starting headless VietJet search");
-
   const [year, month, day] = departDate.split("-").map(Number);
 
-  const browser = await chromium.launch({ headless: true, args: ["--disable-dev-shm-usage"] });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await doSearch(origin, destination, departDate, year!, month!, day!);
+    } catch (err) {
+      logger.warn({ attempt, err }, "VietJet browser search failed, will retry" );
+    }
+  }
+  return { flights: [], capturedAt: new Date().toISOString() };
+}
+
+async function doSearch(
+  origin: string,
+  destination: string,
+  departDate: string,
+  year: number,
+  month: number,
+  day: number,
+): Promise<VietJetSearchResult> {
+  logger.info({ origin, destination, departDate }, "Starting headless VietJet search");
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--disable-dev-shm-usage",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-setuid-sandbox",
+      "--disable-software-rasterizer",
+    ],
+  });
 
   try {
     const context = await browser.newContext({
@@ -148,7 +175,7 @@ export async function searchVietJetFlights(
 
     return { flights: [], capturedAt: new Date().toISOString() };
   } finally {
-    await browser.close();
+    await browser.close().catch(() => { /* browser already crashed */ });
   }
 }
 
@@ -168,12 +195,14 @@ async function safeClick(
 }
 
 async function dismissPromo(page: import("playwright").Page): Promise<void> {
-  await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll("button"));
-    const sau = btns.find((b) => (b.textContent ?? "").includes("sau"));
-    if (sau) sau.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  });
-  await page.waitForTimeout(300);
+  try {
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll("button"));
+      const sau = btns.find((b) => (b.textContent ?? "").includes("sau"));
+      if (sau) sau.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(300);
+  } catch { /* page crashed — skip promo dismissal */ }
 }
 
 /** Click the first div containing the IATA code in the airport dropdown. */
@@ -214,15 +243,17 @@ async function setOnewayAndDate(
   day: number,
 ): Promise<void> {
   // Switch radio to one-way using native property setter (triggers React onChange)
-  await page.evaluate(() => {
-    const radio = document.querySelector('input[type="radio"][value="oneway"]') as HTMLInputElement | null;
-    if (!radio) return;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
-    if (setter) setter.call(radio, true);
-    radio.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    radio.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  await page.waitForTimeout(500);
+  try {
+    await page.evaluate(() => {
+      const radio = document.querySelector('input[type="radio"][value="oneway"]') as HTMLInputElement | null;
+      if (!radio) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked")?.set;
+      if (setter) setter.call(radio, true);
+      radio.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      radio.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForTimeout(500);
+  } catch { /* radio not found or page crashed — skip */ }
 
   // Also click the visible "Một chiều" button to reinforce the state
   const onewayBtn = page.locator("button, label, span").filter({ hasText: /^Một chiều$/ }).first();
@@ -250,87 +281,97 @@ async function selectCalendarDay(
 
   // Scroll calendar forward up to 12 times to find the target month
   for (let attempt = 0; attempt < 13; attempt++) {
-    // Check all visible rdrMonth containers
-    const monthContainers = await page.locator(".rdrMonth").all();
-    for (const mc of monthContainers) {
-      const headerText = (await mc.locator(".rdrMonthAndYearWrapper").textContent().catch(() => "")) ?? "";
-      if (
-        headerText.includes(String(year)) &&
-        (headerText.includes(targetMonthStr) || headerText.includes(`/${String(month).padStart(2, "0")}/`))
-      ) {
-        // Target month found — click the target day
-        const dayBtn = mc
-          .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
-          .filter({ hasText: new RegExp(`^${day}$`) })
-          .first();
-        if (await dayBtn.count() > 0) {
-          const innerSpan = dayBtn.locator(".rdrDayNumber span").first();
-          try {
-            if (await innerSpan.count() > 0) {
-              await innerSpan.tap();
-            } else {
-              await dayBtn.tap();
+    try {
+      // Check all visible rdrMonth containers
+      const monthContainers = await page.locator(".rdrMonth").all();
+      for (const mc of monthContainers) {
+        const headerText = (await mc.locator(".rdrMonthAndYearWrapper").textContent().catch(() => "")) ?? "";
+        if (
+          headerText.includes(String(year)) &&
+          (headerText.includes(targetMonthStr) || headerText.includes(`/${String(month).padStart(2, "0")}/`))
+        ) {
+          // Target month found — click the target day
+          const dayBtn = mc
+            .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
+            .filter({ hasText: new RegExp(`^${day}$`) })
+            .first();
+          if (await dayBtn.count() > 0) {
+            const innerSpan = dayBtn.locator(".rdrDayNumber span").first();
+            try {
+              if (await innerSpan.count() > 0) {
+                await innerSpan.tap();
+              } else {
+                await dayBtn.tap();
+              }
+            } catch {
+              await dayBtn.click({ force: true });
             }
-          } catch {
-            await dayBtn.click({ force: true });
+            await page.waitForTimeout(700);
+            logger.info({ year, month, day }, "Calendar day selected");
+            return;
           }
-          await page.waitForTimeout(700);
-          logger.info({ year, month, day }, "Calendar day selected");
-          return;
         }
       }
-    }
+    } catch { /* calendar not found or page crashed */ }
 
     // Month not in view — navigate forward
-    const nextBtn = page.locator(".rdrNextButton, button[class*='next'], button[aria-label*='Next'], button[aria-label*='next']").first();
-    if (await nextBtn.count() > 0) {
-      await nextBtn.click({ force: true });
-      await page.waitForTimeout(350);
-    } else {
-      break;
-    }
+    try {
+      const nextBtn = page.locator(".rdrNextButton, button[class*='next'], button[aria-label*='Next'], button[aria-label*='next']").first();
+      if (await nextBtn.count() > 0) {
+        await nextBtn.click({ force: true });
+        await page.waitForTimeout(350);
+      } else {
+        break;
+      }
+    } catch { /* next button not found */ }
   }
 
   // Fallback: click the first active day matching the day number
   logger.warn({ day }, "Month not found in calendar, using first active day");
-  const fallbackBtn = page
-    .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
-    .filter({ hasText: new RegExp(`^${day}$`) })
-    .first();
-  if (await fallbackBtn.count() > 0) {
-    const innerSpan = fallbackBtn.locator(".rdrDayNumber span").first();
-    try {
-      await (await innerSpan.count() > 0 ? innerSpan : fallbackBtn).tap();
-    } catch {
-      await fallbackBtn.click({ force: true });
+  try {
+    const fallbackBtn = page
+      .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
+      .filter({ hasText: new RegExp(`^${day}$`) })
+      .first();
+    if (await fallbackBtn.count() > 0) {
+      const innerSpan = fallbackBtn.locator(".rdrDayNumber span").first();
+      try {
+        await (await innerSpan.count() > 0 ? innerSpan : fallbackBtn).tap();
+      } catch {
+        await fallbackBtn.click({ force: true });
+      }
+      await page.waitForTimeout(700);
     }
-    await page.waitForTimeout(700);
-  }
+  } catch { /* fallback failed */ }
 }
 
 /** Close the "CHỌN HÀNH KHÁCH" (passenger selection) modal that auto-opens after date selection. */
 async function dismissPassengerModal(page: import("playwright").Page): Promise<void> {
   // Try aria-label close button first (most reliable)
   for (const label of ["close", "Close", "đóng"]) {
-    const btn = page.locator(`button[aria-label='${label}']`).first();
-    if (await btn.count() > 0) {
-      await btn.click({ force: true });
-      await page.waitForTimeout(400);
-      return;
-    }
-  }
-  // Fallback: JS click on SVG button in the top-right area
-  await page.evaluate(() => {
-    const btns = document.querySelectorAll("button");
-    for (const btn of btns) {
-      const rect = btn.getBoundingClientRect();
-      if (rect.top < 200 && rect.left > 300 && btn.querySelector("svg")) {
-        btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    try {
+      const btn = page.locator(`button[aria-label='${label}']`).first();
+      if (await btn.count() > 0) {
+        await btn.click({ force: true });
+        await page.waitForTimeout(400);
         return;
       }
-    }
-  });
-  await page.waitForTimeout(400);
+    } catch { /* not visible or page crashed */ }
+  }
+  // Fallback: JS click on SVG button in the top-right area
+  try {
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll("button");
+      for (const btn of btns) {
+        const rect = btn.getBoundingClientRect();
+        if (rect.top < 200 && rect.left > 300 && btn.querySelector("svg")) {
+          btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          return;
+        }
+      }
+    });
+    await page.waitForTimeout(400);
+  } catch { /* page crashed — skip */ }
 }
 
 async function waitForCookie(
