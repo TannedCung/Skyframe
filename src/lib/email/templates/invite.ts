@@ -1,3 +1,5 @@
+import { LOGO_HEX_COLORS, logoMarkSvg } from "@/lib/logo-mark";
+
 const APP_URL = process.env["NEXTAUTH_URL"] ?? "http://localhost:3000";
 
 export function inviteEmail(params: {
@@ -25,6 +27,8 @@ View the trip and get real-time price updates: ${acceptUrl}
 Skyframe
 `.trim();
 
+  const logoSvg = logoMarkSvg(24, LOGO_HEX_COLORS);
+
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -38,16 +42,7 @@ Skyframe
     <!-- Header strip -->
     <div style="background:#FFF6DE;padding:18px 24px;border-bottom:1px solid #EFE4C8;display:flex;align-items:center;justify-content:space-between;">
       <span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;letter-spacing:-0.02em;color:#2A1E15;display:inline-flex;align-items:center;gap:8px;">
-        <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#FFF6DE"/>
-          <g transform="translate(11,11)">
-            <rect x="0" y="0" width="42" height="42" rx="4" fill="none" stroke="#2A1E15" stroke-width="2.5"/>
-            <line x1="0" y1="11" x2="42" y2="11" stroke="#2A1E15" stroke-width="2.5"/>
-            <rect x="1.5" y="12.5" width="39" height="11" fill="#8BDFDD"/>
-            <rect x="1.5" y="23.5" width="39" height="17" fill="#FFE394"/>
-            <circle cx="30" cy="20" r="5.5" fill="#F48F68"/>
-          </g>
-        </svg>
+        ${logoSvg}
         Skyframe
       </span>
       <span style="font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:#968471;">An invitation</span>
