@@ -3,8 +3,8 @@ import { logger } from "../logger.js";
 
 const WAF_COOKIE_NAME = "aws-waf-token";
 const HOMEPAGE = "https://www.vietjetair.com/vi";
-const TIMEOUT_MS = 45_000; // reduced from 90s
-const API_CAPTURE_TIMEOUT_MS = 30_000; // reduced from 45s
+const TIMEOUT_MS = 90_000;
+const API_CAPTURE_TIMEOUT_MS = 45_000;
 
 export interface VietJetFlightResult {
   flightNumber: string;
@@ -20,6 +20,8 @@ export interface VietJetFlightResult {
 export interface VietJetSearchResult {
   flights: VietJetFlightResult[];
   capturedAt: string;
+  /** Base64 screenshot taken at the end of the flow (for debugging). */
+  screenshotBase64?: string;
 }
 
 export async function searchVietJetFlights(
@@ -33,7 +35,7 @@ export async function searchVietJetFlights(
     try {
       return await doSearch(origin, destination, departDate, year!, month!, day!);
     } catch (err) {
-      logger.warn({ attempt, err }, "VietJet browser search failed, will retry" );
+      logger.warn({ attempt, err }, "VietJet browser search failed, will retry");
     }
   }
   return { flights: [], capturedAt: new Date().toISOString() };
@@ -47,6 +49,7 @@ async function doSearch(
   month: number,
   day: number,
 ): Promise<VietJetSearchResult> {
+  const t0 = Date.now();
   logger.info({ origin, destination, departDate }, "Starting headless VietJet search");
 
   const browser = await chromium.launch({
@@ -59,6 +62,8 @@ async function doSearch(
       "--disable-software-rasterizer",
     ],
   });
+
+  let screenshot: string | undefined;
 
   try {
     const context = await browser.newContext({
@@ -84,24 +89,25 @@ async function doSearch(
     const page = await context.newPage();
 
     // ── 1. Homepage → WAF cookie ──────────────────────────────────────────────
+    let stepStart = Date.now();
     await page.goto(HOMEPAGE, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
     await waitForCookie(context, WAF_COOKIE_NAME, 10_000);
-    logger.info("WAF cookie acquired");
+    logger.info({ elapsed: Date.now() - stepStart }, "WAF cookie acquired");
 
     // ── 2. Dismiss cookie consent banner ─────────────────────────────────────
+    stepStart = Date.now();
     await safeClick(page, page.getByRole("button", { name: /đồng ý/i }).first(), 5_000);
-    logger.info("Cookie banner dismissed");
+    logger.info({ elapsed: Date.now() - stepStart }, "Cookie banner dismissed");
     await page.waitForTimeout(400);
 
     // ── 3. Select departure airport ───────────────────────────────────────────
     logger.info({ origin }, "Selecting departure airport");
+    stepStart = Date.now();
 
-    // Click the departure airport input directly by placeholder
     const depInput = page.locator("input[placeholder='Điểm khởi hành']").first();
     if (await depInput.count() > 0) {
       await depInput.click({ force: true });
     } else {
-      // Fallback: try generic text inputs
       const inputs = await page.locator("input[type='text']").all();
       if (inputs.length > 0) {
         await inputs[0]!.click({ force: true });
@@ -116,48 +122,51 @@ async function doSearch(
     }
     await page.waitForTimeout(800);
 
-    // Dismiss promo popup inside the airport modal
     await dismissPromo(page);
 
-    // Type IATA code and pick from dropdown
     if (await depInput.count() > 0) {
       await depInput.fill(origin);
       await page.waitForTimeout(600);
     }
-    await clickAirportDiv(page, origin);
-    await page.waitForTimeout(500);
-    logger.info({ origin }, "Departure airport selected");
+    await clickAirportItem(page, origin);
+    logger.info({ elapsed: Date.now() - stepStart }, "Departure airport selected");
 
     // ── 4. Select arrival airport ─────────────────────────────────────────────
     logger.info({ destination }, "Selecting arrival airport");
+    stepStart = Date.now();
     await dismissPromo(page);
 
-    const arrModal = page.locator("input[placeholder='Điểm đến']").first();
-    if (await arrModal.count() > 0) {
-      await arrModal.fill(destination);
+    const arrInput = page.locator("input[placeholder='Điểm đến']").first();
+    if (await arrInput.count() > 0) {
+      await arrInput.fill(destination);
       await page.waitForTimeout(600);
     }
-    await clickAirportDiv(page, destination);
-    await page.waitForTimeout(500);
-    logger.info({ destination }, "Arrival airport selected");
+    await clickAirportItem(page, destination);
+    logger.info({ elapsed: Date.now() - stepStart }, "Arrival airport selected");
 
-    // ── 5. Calendar is now auto-open — set one-way + select date ─────────────
-    logger.info({ departDate }, "Setting departure date (calendar auto-opened)");
+    // ── 5. Calendar — set one-way + select date ──────────────────────────────
+    logger.info({ departDate }, "Setting departure date");
+    stepStart = Date.now();
     await dismissPromo(page);
     await setOnewayAndDate(page, year!, month!, day!);
+    logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
-    // ── 6. Dismiss passenger modal that auto-opens after date selection ───────
+    // ── 6. Dismiss passenger modal ───────────────────────────────────────────
     logger.info("Dismissing passenger modal");
+    stepStart = Date.now();
     await page.waitForTimeout(800);
     await dismissPromo(page);
     await dismissPassengerModal(page);
+    logger.info({ elapsed: Date.now() - stepStart }, "Passenger modal dismissed");
 
     // ── 7. Submit ─────────────────────────────────────────────────────────────
     logger.info("Submitting search");
+    stepStart = Date.now();
     const searchBtn = page.locator("button").filter({ hasText: /Tìm chuyến/i }).last();
     if (await searchBtn.count() > 0) {
       await searchBtn.click({ force: true });
     }
+    logger.info({ elapsed: Date.now() - stepStart }, "Search submitted");
 
     // ── 8. Wait for API responses ─────────────────────────────────────────────
     logger.info("Waiting for flight data");
@@ -166,15 +175,20 @@ async function doSearch(
       await page.waitForTimeout(500);
     }
 
-    logger.info({ captured: capturedFlightJson.length }, "API capture complete");
+    logger.info({ captured: capturedFlightJson.length, totalElapsed: Date.now() - t0 }, "API capture complete");
+
+    // Take a screenshot for debugging
+    try {
+      screenshot = (await page.screenshot()).toString("base64");
+    } catch { /* ignore */ }
 
     if (capturedFlightJson.length > 0) {
       const flights = parseApiResponse(capturedFlightJson, origin, destination, departDate);
       logger.info({ count: flights.length }, "Parsed flights from API intercept");
-      return { flights, capturedAt: new Date().toISOString() };
+      return { flights, capturedAt: new Date().toISOString(), screenshotBase64: screenshot };
     }
 
-    return { flights: [], capturedAt: new Date().toISOString() };
+    return { flights: [], capturedAt: new Date().toISOString(), screenshotBase64: screenshot };
   } finally {
     await browser.close().catch(() => { /* browser already crashed */ });
   }
@@ -206,37 +220,87 @@ async function dismissPromo(page: import("playwright").Page): Promise<void> {
   } catch { /* page crashed — skip promo dismissal */ }
 }
 
-/** Click the first div containing the IATA code in the airport dropdown. */
-async function clickAirportDiv(
+/**
+ * Click an airport option in the dropdown using JS-native matching.
+ * Instead of iterating all divs via Playwright (which hangs with hundreds of elements),
+ * we evaluate in the page context to find and click the matching item.
+ */
+async function clickAirportItem(
   page: import("playwright").Page,
   iataCode: string,
 ): Promise<void> {
-  // Wait for dropdown to appear
   await page.waitForTimeout(500);
 
-  // Try exact match first, then partial match (site may show "HAN - Noi Bai" etc.)
-  const candidates = await page.locator("div").all();
-  for (const div of candidates) {
-    const txt = (await div.textContent()).trim();
-    if (txt === iataCode || txt.startsWith(iataCode) || txt.includes(`(${iataCode})`)) {
-      await div.click({ force: true, timeout: 5_000 });
-      await page.waitForTimeout(800);
-      return;
+  const result = await page.evaluate((code) => {
+    // Airport dropdown items can appear in multiple formats:
+    // 1. Exact text: "HAN"
+    // 2. Prefixed: "HAN - Noi Bai"
+    // 3. With IATA in parens: "Noi Bai (HAN)"
+    // 4. Inside li/div/span with data attributes
+    const codeUpper = code.toUpperCase();
+
+    // Try common dropdown item selectors
+    const selectors = [
+      "li[role='option']",
+      "li.dropdown-item",
+      "li.list-group-item",
+      "div[role='option']",
+      "div.dropdown-item",
+      ".airport-item",
+      ".location-item",
+      "[data-iata]",
+    ];
+
+    let clicked = false;
+
+    for (const sel of selectors) {
+      if (clicked) break;
+      const items = document.querySelectorAll(sel);
+      for (const item of Array.from(items)) {
+        const txt = (item.textContent ?? "").trim().toUpperCase();
+        const iataAttr = (item as HTMLElement).dataset?.iata?.toUpperCase();
+        if (
+          iataAttr === codeUpper ||
+          txt === codeUpper ||
+          txt.startsWith(codeUpper + " ") ||
+          txt.startsWith(codeUpper + "-") ||
+          txt.includes(`(${codeUpper})`)
+        ) {
+          (item as HTMLElement).click();
+          clicked = true;
+          break;
+        }
+      }
     }
+
+    // Fallback: search all elements with reasonable text content
+    if (!clicked) {
+      const allElements = document.querySelectorAll("li, div[role], span[role], button[role], a");
+      for (const el of Array.from(allElements)) {
+        const txt = (el.textContent ?? "").trim().toUpperCase();
+        // Match items that start with the IATA code or contain it in parens
+        if (
+          (txt.startsWith(codeUpper + " ") || txt.startsWith(codeUpper + "-") || txt.includes(`(${codeUpper})`)) &&
+          txt.length < 80
+        ) {
+          (el as HTMLElement).click();
+          clicked = true;
+          break;
+        }
+      }
+    }
+
+    return { clicked, selectorsTried: selectors.length };
+  }, iataCode);
+
+  if (!result.clicked) {
+    throw new Error(`No airport dropdown item matching "${iataCode}" found (tried ${result.selectorsTried} selectors + fallback)`);
   }
 
-  // Fallback: click the first div containing the IATA code
-  const fallback = page.locator("div").filter({ hasText: iataCode }).first();
-  if (await fallback.count() > 0) {
-    await fallback.click({ force: true, timeout: 5_000 });
-    await page.waitForTimeout(800);
-    return;
-  }
-
-  throw new Error(`No airport div containing "${iataCode}" found in dropdown`);
+  await page.waitForTimeout(800);
 }
 
-/** Switch to one-way via React native setter, then tap the target calendar day. */
+/** Switch to one-way via React native setter, then select calendar day. */
 async function setOnewayAndDate(
   page: import("playwright").Page,
   year: number,
@@ -263,11 +327,13 @@ async function setOnewayAndDate(
     await page.waitForTimeout(400);
   }
 
-  // Find the correct month in the calendar and tap the target day
   await selectCalendarDay(page, year, month, day);
 }
 
-/** Navigate the react-date-range calendar to target month and tap the day. */
+/**
+ * Navigate the calendar to target month and tap the day.
+ * Uses JS-native approach to avoid Playwright locator overhead.
+ */
 async function selectCalendarDay(
   page: import("playwright").Page,
   year: number,
@@ -280,75 +346,194 @@ async function selectCalendarDay(
   ];
   const targetMonthStr = vjMonthNames[month]!;
 
-  // Scroll calendar forward up to 12 times to find the target month
+  // Wait for calendar to appear
+  await page.waitForTimeout(500);
+
   for (let attempt = 0; attempt < 13; attempt++) {
-    try {
-      // Check all visible rdrMonth containers
-      const monthContainers = await page.locator(".rdrMonth").all();
-      for (const mc of monthContainers) {
-        const headerText = (await mc.locator(".rdrMonthAndYearWrapper").textContent().catch(() => "")) ?? "";
-        if (
-          headerText.includes(String(year)) &&
-          (headerText.includes(targetMonthStr) || headerText.includes(`/${String(month).padStart(2, "0")}/`))
-        ) {
-          // Target month found — click the target day
-          const dayBtn = mc
-            .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
-            .filter({ hasText: new RegExp(`^${day}$`) })
-            .first();
-          if (await dayBtn.count() > 0) {
-            const innerSpan = dayBtn.locator(".rdrDayNumber span").first();
-            try {
-              if (await innerSpan.count() > 0) {
-                await innerSpan.tap();
-              } else {
-                await dayBtn.tap();
-              }
-            } catch {
-              await dayBtn.click({ force: true });
+    const result = await page.evaluate(
+      ({ yr, mo, dy, monthStr }) => {
+        // Find calendar month containers — try multiple class patterns
+        const monthSelectors = [".rdrMonth", ".calendar-month", "[class*='Month']"];
+        let monthContainers: Element[] = [];
+        for (const sel of monthSelectors) {
+          const els = document.querySelectorAll(sel);
+          if (els.length > 0) {
+            monthContainers = Array.from(els);
+            break;
+          }
+        }
+
+        // If no structured selectors match, look for elements containing month names
+        if (monthContainers.length === 0) {
+          // Look for headers that contain the year and month string
+          const allHeaders = document.querySelectorAll("h3, h4, h5, span, div");
+          for (const header of Array.from(allHeaders)) {
+            const txt = (header.textContent ?? "").trim();
+            if (txt.includes(String(yr)) && (txt.includes(monthStr) || txt.includes(`/${String(mo).padStart(2, "0")}/`))) {
+              // Found the month header — get its parent container
+              monthContainers = [header.closest(".rdrMonth, [class*='Month']") ?? header.parentElement ?? header];
+              break;
             }
-            await page.waitForTimeout(700);
-            logger.info({ year, month, day }, "Calendar day selected");
-            return;
+          }
+        }
+
+        for (const mc of monthContainers) {
+          const headerText = (mc.textContent ?? "").trim();
+          if (
+            headerText.includes(String(yr)) &&
+            (headerText.includes(monthStr) || headerText.includes(`/${String(mo).padStart(2, "0")}/`))
+          ) {
+            // Find the day button
+            const dayBtns = mc.querySelectorAll("button");
+            for (const btn of Array.from(dayBtns)) {
+              const btnTxt = (btn.textContent ?? "").trim();
+              const isDisabled = btn.classList.contains("rdrDayDisabled") ||
+                btn.classList.contains("rdrDayPassive") ||
+                btn.hasAttribute("disabled");
+              if (btnTxt === String(dy) && !isDisabled) {
+                // Try tapping the span inside first (more precise)
+                const span = btn.querySelector(".rdrDayNumber span");
+                if (span) {
+                  (span as HTMLElement).click();
+                  return { success: true, method: "span-click" };
+                }
+                (btn as HTMLElement).click();
+                return { success: true, method: "btn-click" };
+              }
+            }
+          }
+        }
+
+        return { success: false, monthCount: monthContainers.length };
+      },
+      { yr: year, mo: month, dy: day, monthStr: targetMonthStr },
+    );
+
+    if (result.success) {
+      await page.waitForTimeout(700);
+      logger.info({ year, month, day, method: (result as any).method }, "Calendar day selected");
+      return;
+    }
+
+    // Navigate forward one month
+    const nextClicked = await page.evaluate(() => {
+      const nextSelectors = [
+        ".rdrNextButton",
+        "button[aria-label*='Next']",
+        "button[aria-label*='next']",
+        "button[aria-label*='Tiếp']",
+        "button[class*='next']",
+        "button.nav-next",
+      ];
+      for (const sel of nextSelectors) {
+        const btn = document.querySelector(sel) as HTMLElement | null;
+        if (btn) {
+          btn.click();
+          return true;
+        }
+      }
+      // Fallback: look for any button with an arrow icon on the right
+      const allBtns = document.querySelectorAll("button");
+      for (const btn of Array.from(allBtns)) {
+        const rect = btn.getBoundingClientRect();
+        if (rect.width < 50 && rect.right > window.innerWidth * 0.7) {
+          const svg = btn.querySelector("svg");
+          if (svg) {
+            btn.click();
+            return true;
           }
         }
       }
-    } catch { /* calendar not found or page crashed */ }
+      return false;
+    });
 
-    // Month not in view — navigate forward
-    try {
-      const nextBtn = page.locator(".rdrNextButton, button[class*='next'], button[aria-label*='Next'], button[aria-label*='next']").first();
-      if (await nextBtn.count() > 0) {
-        await nextBtn.click({ force: true });
-        await page.waitForTimeout(350);
-      } else {
-        break;
-      }
-    } catch { /* next button not found */ }
+    if (!nextClicked) {
+      logger.warn("No calendar next button found, breaking loop");
+      break;
+    }
+    await page.waitForTimeout(400);
   }
 
-  // Fallback: click the first active day matching the day number
-  logger.warn({ day }, "Month not found in calendar, using first active day");
+  // Fallback: click the first active day matching the day number anywhere on page
+  logger.warn({ day }, "Month not found in calendar, using first active day as fallback");
   try {
-    const fallbackBtn = page
-      .locator("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)")
-      .filter({ hasText: new RegExp(`^${day}$`) })
-      .first();
-    if (await fallbackBtn.count() > 0) {
-      const innerSpan = fallbackBtn.locator(".rdrDayNumber span").first();
-      try {
-        await (await innerSpan.count() > 0 ? innerSpan : fallbackBtn).tap();
-      } catch {
-        await fallbackBtn.click({ force: true });
+    const fallbackResult = await page.evaluate((dy) => {
+      const dayBtns = document.querySelectorAll("button");
+      for (const btn of Array.from(dayBtns)) {
+        const txt = (btn.textContent ?? "").trim();
+        const isDisabled = btn.classList.contains("rdrDayDisabled") ||
+          btn.classList.contains("rdrDayPassive") ||
+          btn.hasAttribute("disabled");
+        if (txt === String(dy) && !isDisabled) {
+          (btn as HTMLElement).click();
+          return { success: true };
+        }
       }
+      return { success: false };
+    }, day);
+
+    if (fallbackResult.success) {
       await page.waitForTimeout(700);
+      logger.info({ day }, "Fallback calendar day selected");
+      return;
     }
   } catch { /* fallback failed */ }
+
+  logger.error({ year, month, day }, "Failed to select any calendar day");
 }
 
-/** Close the "CHỌN HÀNH KHÁCH" (passenger selection) modal that auto-opens after date selection. */
+/** Close the "CHỌN HÀNH KHÁCH" (passenger selection) modal. */
 async function dismissPassengerModal(page: import("playwright").Page): Promise<void> {
-  // Try aria-label close button first (most reliable)
+  // Try JS-native approach first — more reliable than Playwright locators
+  try {
+    const dismissed = await page.evaluate(() => {
+      // Try aria-label close buttons
+      for (const label of ["close", "Close", "đóng", "Đóng", "close modal"]) {
+        const btn = document.querySelector(`button[aria-label='${label}']`) as HTMLElement | null;
+        if (btn) { btn.click(); return true; }
+      }
+
+      // Look for close buttons near the top-right of any modal overlay
+      const allBtns = document.querySelectorAll("button");
+      for (const btn of Array.from(allBtns)) {
+        const rect = btn.getBoundingClientRect();
+        // Top-right area of viewport
+        if (rect.top < 200 && rect.left > window.innerWidth * 0.6) {
+          const hasIcon = btn.querySelector("svg") || btn.querySelector("img");
+          const isClose = (btn.textContent ?? "").trim().length === 0 ||
+            (btn.textContent ?? "").trim() === "×" ||
+            (btn.textContent ?? "").trim() === "X" ||
+            hasIcon;
+          if (isClose) {
+            btn.click();
+            return true;
+          }
+        }
+      }
+
+      // Look for modal close buttons by common patterns
+      const closeSelectors = [
+        ".modal-close",
+        "[data-dismiss='modal']",
+        ".close-btn",
+        "button.close",
+        ".modal-header button:last-child",
+      ];
+      for (const sel of closeSelectors) {
+        const btn = document.querySelector(sel) as HTMLElement | null;
+        if (btn) { btn.click(); return true; }
+      }
+
+      return false;
+    });
+
+    if (dismissed) {
+      await page.waitForTimeout(400);
+      return;
+    }
+  } catch { /* page crashed — skip */ }
+
+  // Fallback: Playwright locator approach
   for (const label of ["close", "Close", "đóng"]) {
     try {
       const btn = page.locator(`button[aria-label='${label}']`).first();
@@ -359,20 +544,6 @@ async function dismissPassengerModal(page: import("playwright").Page): Promise<v
       }
     } catch { /* not visible or page crashed */ }
   }
-  // Fallback: JS click on SVG button in the top-right area
-  try {
-    await page.evaluate(() => {
-      const btns = document.querySelectorAll("button");
-      for (const btn of btns) {
-        const rect = btn.getBoundingClientRect();
-        if (rect.top < 200 && rect.left > 300 && btn.querySelector("svg")) {
-          btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    });
-    await page.waitForTimeout(400);
-  } catch { /* page crashed — skip */ }
 }
 
 async function waitForCookie(
@@ -404,7 +575,6 @@ function parseApiResponse(
     const r = resp as Record<string, unknown>;
     if (r["status"] !== true) continue;
 
-    // Shape: { status: true, travelOption: { "HAN-SGN": [...] }, sessionId: "..." }
     const travelOption = r["travelOption"] as Record<string, unknown> | undefined;
     const sessionId = r["sessionId"] as string | undefined;
 
@@ -429,7 +599,6 @@ function parseApiResponse(
 
       if (!depTime || !arrTime) continue;
 
-      // Find the cheapest valid fare option
       for (const fo of fareOptions) {
         const validity = fo["fareValidity"] as Record<string, unknown> | undefined;
         if (validity?.["soldOut"] || validity?.["noFare"] || !validity?.["valid"]) continue;
@@ -437,7 +606,6 @@ function parseApiResponse(
         const bookingKey = fo["bookingKey"] as string | undefined;
         const fareCharges = fo["fareCharges"] as Array<Record<string, unknown>> | undefined;
 
-        // Find the base fare charge (chargeType.code === "FA")
         const fareCharge = fareCharges?.find((c) => {
           const ct = c["chargeType"] as Record<string, unknown> | undefined;
           return ct?.["code"] === "FA";
@@ -461,12 +629,11 @@ function parseApiResponse(
           priceVnd: totalAmount,
           bookingLink,
         });
-        break; // cheapest fare per flight option
+        break;
       }
     }
   }
 
-  // Deduplicate by flightNumber, keep cheapest
   const byFlight = new Map<string, VietJetFlightResult>();
   for (const r of results) {
     const existing = byFlight.get(r.flightNumber);

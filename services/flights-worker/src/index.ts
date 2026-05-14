@@ -131,7 +131,12 @@ async function handleVietJetSearch(req: http.IncomingMessage, res: http.ServerRe
   try {
     const result = await searchVietJetFlights(origin, destination, date);
     setCache(key, result);
-    json(res, 200, result);
+    // Include screenshot in response for debugging (only when 0 flights)
+    const responseBody: Record<string, unknown> = { flights: result.flights, capturedAt: result.capturedAt };
+    if (result.flights.length === 0 && (result as any).screenshotBase64) {
+      responseBody.screenshotBase64 = (result as any).screenshotBase64;
+    }
+    json(res, 200, responseBody);
   } catch (err) {
     const msg = err instanceof Error ? err.stack ?? err.message : String(err);
     logger.error({ err: msg, key }, "VietJet search failed");
