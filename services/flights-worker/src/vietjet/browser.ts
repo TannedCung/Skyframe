@@ -9,7 +9,7 @@ const API_CAPTURE_TIMEOUT_MS = 45_000;
 export interface VietJetFlightResult {
   flightNumber: string;
   airline: string;
-  departureTime: string; // "2026-07-01T07:00:00"
+  departureTime: string;
   arrivalTime: string;
   from: string;
   to: string;
@@ -20,14 +20,13 @@ export interface VietJetFlightResult {
 export interface VietJetSearchResult {
   flights: VietJetFlightResult[];
   capturedAt: string;
-  /** Base64 screenshot taken at the end of the flow (for debugging). */
   screenshotBase64?: string;
 }
 
 export async function searchVietJetFlights(
   origin: string,
   destination: string,
-  departDate: string, // YYYY-MM-DD
+  departDate: string,
 ): Promise<VietJetSearchResult> {
   const [year, month, day] = departDate.split("-").map(Number);
 
@@ -35,7 +34,8 @@ export async function searchVietJetFlights(
     try {
       return await doSearch(origin, destination, departDate, year!, month!, day!);
     } catch (err) {
-      logger.warn({ attempt, err }, "VietJet browser search failed, will retry");
+      const errInfo = err instanceof Error ? { message: err.message, stack: err.stack } : { raw: String(err) };
+      logger.warn({ attempt, ...errInfo }, "VietJet browser search failed, will retry");
     }
   }
   return { flights: [], capturedAt: new Date().toISOString() };
@@ -88,70 +88,38 @@ async function doSearch(
 
     const page = await context.newPage();
 
-    // ── 1. Homepage → WAF cookie ──────────────────────────────────────────────
+    // ── 1. Homepage → wait for WAF cookie ─────────────────────────────────────
     let stepStart = Date.now();
-    await page.goto(HOMEPAGE, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
-    await waitForCookie(context, WAF_COOKIE_NAME, 10_000);
-    logger.info({ elapsed: Date.now() - stepStart }, "WAF cookie acquired");
+    await page.goto(HOMEPAGE, { waitUntil: "networkidle", timeout: TIMEOUT_MS });
+    const hasWaf = await waitForCookie(context, WAF_COOKIE_NAME, 10_000);
+    if (!hasWaf) {
+      logger.warn("WAF cookie not found after 10s, proceeding anyway");
+    } else {
+      logger.info({ elapsed: Date.now() - stepStart }, "WAF cookie acquired");
+    }
 
     // ── 2. Dismiss cookie consent banner ─────────────────────────────────────
     stepStart = Date.now();
     await safeClick(page, page.getByRole("button", { name: /đồng ý/i }).first(), 5_000);
     logger.info({ elapsed: Date.now() - stepStart }, "Cookie banner dismissed");
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(500);
 
-    // ── 3. Select departure airport ───────────────────────────────────────────
-    logger.info({ origin }, "Selecting departure airport");
+    // ── 3. Select airports via pressSequentially + dropdown click ───────────
+    logger.info({ origin, destination }, "Selecting airports");
     stepStart = Date.now();
 
-    const depInput = page.locator("input[placeholder='Điểm khởi hành']").first();
-    if (await depInput.count() > 0) {
-      await depInput.click({ force: true });
-    } else {
-      const inputs = await page.locator("input[type='text']").all();
-      if (inputs.length > 0) {
-        await inputs[0]!.click({ force: true });
-      } else {
-        const allInputs = await page.locator("input").all();
-        if (allInputs.length > 0) {
-          await allInputs[0]!.click({ force: true });
-        } else {
-          throw new Error("No input elements found on page");
-        }
-      }
-    }
-    await page.waitForTimeout(800);
+    await selectAirportsViaJS(page, origin, destination);
 
-    await dismissPromo(page);
+    logger.info({ elapsed: Date.now() - stepStart }, "Airports selected");
 
-    if (await depInput.count() > 0) {
-      await depInput.fill(origin);
-      await page.waitForTimeout(600);
-    }
-    await clickAirportItem(page, origin);
-    logger.info({ elapsed: Date.now() - stepStart }, "Departure airport selected");
-
-    // ── 4. Select arrival airport ─────────────────────────────────────────────
-    logger.info({ destination }, "Selecting arrival airport");
-    stepStart = Date.now();
-    await dismissPromo(page);
-
-    const arrInput = page.locator("input[placeholder='Điểm đến']").first();
-    if (await arrInput.count() > 0) {
-      await arrInput.fill(destination);
-      await page.waitForTimeout(600);
-    }
-    await clickAirportItem(page, destination);
-    logger.info({ elapsed: Date.now() - stepStart }, "Arrival airport selected");
-
-    // ── 5. Calendar — set one-way + select date ──────────────────────────────
+    // ── 4. Calendar — set one-way + select date ──────────────────────────────
     logger.info({ departDate }, "Setting departure date");
     stepStart = Date.now();
     await dismissPromo(page);
     await setOnewayAndDate(page, year!, month!, day!);
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
-    // ── 6. Dismiss passenger modal ───────────────────────────────────────────
+    // ── 5. Dismiss passenger modal ───────────────────────────────────────────
     logger.info("Dismissing passenger modal");
     stepStart = Date.now();
     await page.waitForTimeout(800);
@@ -159,7 +127,7 @@ async function doSearch(
     await dismissPassengerModal(page);
     logger.info({ elapsed: Date.now() - stepStart }, "Passenger modal dismissed");
 
-    // ── 7. Submit ─────────────────────────────────────────────────────────────
+    // ── 6. Submit ─────────────────────────────────────────────────────────────
     logger.info("Submitting search");
     stepStart = Date.now();
     const searchBtn = page.locator("button").filter({ hasText: /Tìm chuyến/i }).last();
@@ -168,7 +136,7 @@ async function doSearch(
     }
     logger.info({ elapsed: Date.now() - stepStart }, "Search submitted");
 
-    // ── 8. Wait for API responses ─────────────────────────────────────────────
+    // ── 7. Wait for API responses ─────────────────────────────────────────────
     logger.info("Waiting for flight data");
     const deadline = Date.now() + API_CAPTURE_TIMEOUT_MS;
     while (capturedFlightJson.length === 0 && Date.now() < deadline) {
@@ -177,7 +145,7 @@ async function doSearch(
 
     logger.info({ captured: capturedFlightJson.length, totalElapsed: Date.now() - t0 }, "API capture complete");
 
-    // Take a screenshot for debugging
+    // Screenshot for debugging
     try {
       screenshot = (await page.screenshot()).toString("base64");
     } catch { /* ignore */ }
@@ -221,83 +189,87 @@ async function dismissPromo(page: import("playwright").Page): Promise<void> {
 }
 
 /**
- * Click an airport option in the dropdown using JS-native matching.
- * Instead of iterating all divs via Playwright (which hangs with hundreds of elements),
- * we evaluate in the page context to find and click the matching item.
+ * Select departure and arrival airports using pressSequentially + JS dropdown click.
  */
-async function clickAirportItem(
+async function selectAirportsViaJS(
   page: import("playwright").Page,
-  iataCode: string,
+  origin: string,
+  destination: string,
 ): Promise<void> {
+  // ── Departure ──
+  const depInput = page.locator("input[placeholder='Điểm khởi hành']").first();
+  if (await depInput.count() === 0) {
+    throw new Error("Departure airport input not found (placeholder 'Điểm khởi hành')");
+  }
+
+  await depInput.click({ force: true });
+  await page.waitForTimeout(600);
+  await dismissPromo(page);
+  await depInput.pressSequentially(origin, { delay: 100 });
+  await page.waitForTimeout(1000);
+  await clickDropdownItem(page, origin, "departure");
   await page.waitForTimeout(500);
 
+  // ── Arrival ──
+  const arrInput = page.locator("input[placeholder='Điểm đến']").first();
+  if (await arrInput.count() === 0) {
+    throw new Error("Arrival airport input not found (placeholder 'Điểm đến')");
+  }
+
+  await arrInput.click({ force: true });
+  await page.waitForTimeout(600);
+  await dismissPromo(page);
+  await arrInput.pressSequentially(destination, { delay: 100 });
+  await page.waitForTimeout(1000);
+  await clickDropdownItem(page, destination, "arrival");
+}
+
+/** Click a dropdown item matching the IATA code using page.evaluate. */
+async function clickDropdownItem(
+  page: import("playwright").Page,
+  iataCode: string,
+  label: string,
+): Promise<void> {
   const result = await page.evaluate((code) => {
-    // Airport dropdown items can appear in multiple formats:
-    // 1. Exact text: "HAN"
-    // 2. Prefixed: "HAN - Noi Bai"
-    // 3. With IATA in parens: "Noi Bai (HAN)"
-    // 4. Inside li/div/span with data attributes
     const codeUpper = code.toUpperCase();
 
-    // Try common dropdown item selectors
-    const selectors = [
-      "li[role='option']",
-      "li.dropdown-item",
-      "li.list-group-item",
-      "div[role='option']",
-      "div.dropdown-item",
-      ".airport-item",
-      ".location-item",
-      "[data-iata]",
-    ];
+    const allItems = document.querySelectorAll(
+      "li, [role='option'], .dropdown-item, .list-group-item, " +
+      ".airport-item, .location-item, [data-iata], " +
+      "div[class*='item'], div[class*='airport'], div[class*='location']"
+    );
 
-    let clicked = false;
+    for (const el of Array.from(allItems)) {
+      const txt = (el.textContent ?? "").trim().toUpperCase();
+      const iataAttr = (el as HTMLElement).dataset?.iata?.toUpperCase();
+      const rect = el.getBoundingClientRect();
 
-    for (const sel of selectors) {
-      if (clicked) break;
-      const items = document.querySelectorAll(sel);
-      for (const item of Array.from(items)) {
-        const txt = (item.textContent ?? "").trim().toUpperCase();
-        const iataAttr = (item as HTMLElement).dataset?.iata?.toUpperCase();
-        if (
-          iataAttr === codeUpper ||
-          txt === codeUpper ||
-          txt.startsWith(codeUpper + " ") ||
-          txt.startsWith(codeUpper + "-") ||
-          txt.includes(`(${codeUpper})`)
-        ) {
-          (item as HTMLElement).click();
-          clicked = true;
-          break;
-        }
+      if (rect.width === 0 || rect.height === 0) continue;
+
+      if (
+        iataAttr === codeUpper ||
+        txt === codeUpper ||
+        txt.startsWith(codeUpper + " ") ||
+        txt.startsWith(codeUpper + " -") ||
+        txt.includes(`(${codeUpper})`) ||
+        txt.startsWith(codeUpper + "—")
+      ) {
+        (el as HTMLElement).click();
+        return { clicked: true, text: txt, tag: el.tagName };
       }
     }
 
-    // Fallback: search all elements with reasonable text content
-    if (!clicked) {
-      const allElements = document.querySelectorAll("li, div[role], span[role], button[role], a");
-      for (const el of Array.from(allElements)) {
-        const txt = (el.textContent ?? "").trim().toUpperCase();
-        // Match items that start with the IATA code or contain it in parens
-        if (
-          (txt.startsWith(codeUpper + " ") || txt.startsWith(codeUpper + "-") || txt.includes(`(${codeUpper})`)) &&
-          txt.length < 80
-        ) {
-          (el as HTMLElement).click();
-          clicked = true;
-          break;
-        }
-      }
-    }
-
-    return { clicked, selectorsTried: selectors.length };
+    return { clicked: false, totalItems: allItems.length };
   }, iataCode);
 
   if (!result.clicked) {
-    throw new Error(`No airport dropdown item matching "${iataCode}" found (tried ${result.selectorsTried} selectors + fallback)`);
+    throw new Error(
+      `No dropdown item matching "${iataCode}" found for ${label} ` +
+      `(found ${(result as any).totalItems ?? "unknown"} candidate elements)`
+    );
   }
 
-  await page.waitForTimeout(800);
+  logger.info({ label, iataCode, matchedText: (result as any).text }, "Dropdown item clicked");
 }
 
 /** Switch to one-way via React native setter, then select calendar day. */
@@ -307,7 +279,6 @@ async function setOnewayAndDate(
   month: number,
   day: number,
 ): Promise<void> {
-  // Switch radio to one-way using native property setter (triggers React onChange)
   try {
     await page.evaluate(() => {
       const radio = document.querySelector('input[type="radio"][value="oneway"]') as HTMLInputElement | null;
@@ -320,7 +291,6 @@ async function setOnewayAndDate(
     await page.waitForTimeout(500);
   } catch { /* radio not found or page crashed — skip */ }
 
-  // Also click the visible "Một chiều" button to reinforce the state
   const onewayBtn = page.locator("button, label, span").filter({ hasText: /^Một chiều$/ }).first();
   if (await onewayBtn.count() > 0) {
     await onewayBtn.click({ force: true }).catch(() => { /* ignore */ });
@@ -330,10 +300,7 @@ async function setOnewayAndDate(
   await selectCalendarDay(page, year, month, day);
 }
 
-/**
- * Navigate the calendar to target month and tap the day.
- * Uses JS-native approach to avoid Playwright locator overhead.
- */
+/** Navigate the calendar to target month and tap the day. */
 async function selectCalendarDay(
   page: import("playwright").Page,
   year: number,
@@ -346,13 +313,11 @@ async function selectCalendarDay(
   ];
   const targetMonthStr = vjMonthNames[month]!;
 
-  // Wait for calendar to appear
   await page.waitForTimeout(500);
 
   for (let attempt = 0; attempt < 13; attempt++) {
     const result = await page.evaluate(
       ({ yr, mo, dy, monthStr }) => {
-        // Find calendar month containers — try multiple class patterns
         const monthSelectors = [".rdrMonth", ".calendar-month", "[class*='Month']"];
         let monthContainers: Element[] = [];
         for (const sel of monthSelectors) {
@@ -363,14 +328,11 @@ async function selectCalendarDay(
           }
         }
 
-        // If no structured selectors match, look for elements containing month names
         if (monthContainers.length === 0) {
-          // Look for headers that contain the year and month string
           const allHeaders = document.querySelectorAll("h3, h4, h5, span, div");
           for (const header of Array.from(allHeaders)) {
             const txt = (header.textContent ?? "").trim();
             if (txt.includes(String(yr)) && (txt.includes(monthStr) || txt.includes(`/${String(mo).padStart(2, "0")}/`))) {
-              // Found the month header — get its parent container
               monthContainers = [header.closest(".rdrMonth, [class*='Month']") ?? header.parentElement ?? header];
               break;
             }
@@ -383,7 +345,6 @@ async function selectCalendarDay(
             headerText.includes(String(yr)) &&
             (headerText.includes(monthStr) || headerText.includes(`/${String(mo).padStart(2, "0")}/`))
           ) {
-            // Find the day button
             const dayBtns = mc.querySelectorAll("button");
             for (const btn of Array.from(dayBtns)) {
               const btnTxt = (btn.textContent ?? "").trim();
@@ -391,7 +352,6 @@ async function selectCalendarDay(
                 btn.classList.contains("rdrDayPassive") ||
                 btn.hasAttribute("disabled");
               if (btnTxt === String(dy) && !isDisabled) {
-                // Try tapping the span inside first (more precise)
                 const span = btn.querySelector(".rdrDayNumber span");
                 if (span) {
                   (span as HTMLElement).click();
@@ -415,7 +375,6 @@ async function selectCalendarDay(
       return;
     }
 
-    // Navigate forward one month
     const nextClicked = await page.evaluate(() => {
       const nextSelectors = [
         ".rdrNextButton",
@@ -432,7 +391,6 @@ async function selectCalendarDay(
           return true;
         }
       }
-      // Fallback: look for any button with an arrow icon on the right
       const allBtns = document.querySelectorAll("button");
       for (const btn of Array.from(allBtns)) {
         const rect = btn.getBoundingClientRect();
@@ -454,7 +412,6 @@ async function selectCalendarDay(
     await page.waitForTimeout(400);
   }
 
-  // Fallback: click the first active day matching the day number anywhere on page
   logger.warn({ day }, "Month not found in calendar, using first active day as fallback");
   try {
     const fallbackResult = await page.evaluate((dy) => {
@@ -482,22 +439,18 @@ async function selectCalendarDay(
   logger.error({ year, month, day }, "Failed to select any calendar day");
 }
 
-/** Close the "CHỌN HÀNH KHÁCH" (passenger selection) modal. */
+/** Close the passenger selection modal. */
 async function dismissPassengerModal(page: import("playwright").Page): Promise<void> {
-  // Try JS-native approach first — more reliable than Playwright locators
   try {
     const dismissed = await page.evaluate(() => {
-      // Try aria-label close buttons
       for (const label of ["close", "Close", "đóng", "Đóng", "close modal"]) {
         const btn = document.querySelector(`button[aria-label='${label}']`) as HTMLElement | null;
         if (btn) { btn.click(); return true; }
       }
 
-      // Look for close buttons near the top-right of any modal overlay
       const allBtns = document.querySelectorAll("button");
       for (const btn of Array.from(allBtns)) {
         const rect = btn.getBoundingClientRect();
-        // Top-right area of viewport
         if (rect.top < 200 && rect.left > window.innerWidth * 0.6) {
           const hasIcon = btn.querySelector("svg") || btn.querySelector("img");
           const isClose = (btn.textContent ?? "").trim().length === 0 ||
@@ -511,14 +464,7 @@ async function dismissPassengerModal(page: import("playwright").Page): Promise<v
         }
       }
 
-      // Look for modal close buttons by common patterns
-      const closeSelectors = [
-        ".modal-close",
-        "[data-dismiss='modal']",
-        ".close-btn",
-        "button.close",
-        ".modal-header button:last-child",
-      ];
+      const closeSelectors = [".modal-close", "[data-dismiss='modal']", ".close-btn", "button.close", ".modal-header button:last-child"];
       for (const sel of closeSelectors) {
         const btn = document.querySelector(sel) as HTMLElement | null;
         if (btn) { btn.click(); return true; }
@@ -533,7 +479,6 @@ async function dismissPassengerModal(page: import("playwright").Page): Promise<v
     }
   } catch { /* page crashed — skip */ }
 
-  // Fallback: Playwright locator approach
   for (const label of ["close", "Close", "đóng"]) {
     try {
       const btn = page.locator(`button[aria-label='${label}']`).first();
@@ -542,7 +487,7 @@ async function dismissPassengerModal(page: import("playwright").Page): Promise<v
         await page.waitForTimeout(400);
         return;
       }
-    } catch { /* not visible or page crashed */ }
+    } catch { /* not visible */ }
   }
 }
 
@@ -550,13 +495,14 @@ async function waitForCookie(
   context: import("playwright").BrowserContext,
   name: string,
   timeoutMs: number,
-): Promise<void> {
+): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const cookies = await context.cookies();
-    if (cookies.some((c) => c.name === name)) return;
+    if (cookies.some((c) => c.name === name)) return true;
     await new Promise((r) => setTimeout(r, 300));
   }
+  return false;
 }
 
 // ─── API response parsing ─────────────────────────────────────────────────────
