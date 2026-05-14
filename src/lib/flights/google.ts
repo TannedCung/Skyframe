@@ -15,9 +15,21 @@ const RETRY_DELAY_MS = 1000;
 /**
  * Google Flights provider using `impers` for Chrome TLS fingerprint impersonation.
  * No API key required — Google validates the TLS ClientHello, not a bearer token.
+ *
+ * Gracefully returns empty results when `impers` native module is unavailable
+ * (e.g. Vercel Lambda), so the composite chain falls through to the next provider.
  */
 export class GoogleFlightsProvider implements FlightProvider {
   async searchFlights(params: FlightSearchParams): Promise<FlightOption[]> {
+    // impers requires libcurl-impersonate (native FFI), unavailable on Vercel.
+    // Return empty results so the composite chain falls through to the next provider.
+    const impersModule = await import("impers").catch(() => null);
+    if (!impersModule) {
+      logger.warn("Google Flights skipped: impers native module not available");
+      return [];
+    }
+    const { post } = impersModule;
+
     const filters = buildGoogleFilters({
       origin: params.origin,
       destination: params.destination,
@@ -35,7 +47,6 @@ export class GoogleFlightsProvider implements FlightProvider {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const { post } = await import("impers");
         const res = await post(FLIGHTS_URL, {
           impersonate: "chrome146",
           data: body,

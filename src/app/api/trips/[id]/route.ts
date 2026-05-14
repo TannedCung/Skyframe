@@ -10,8 +10,9 @@ import {
 import { getCurrentItinerary, getItineraryHistory } from "@/lib/db/queries/itineraries";
 import { getWatchersByTrip } from "@/lib/db/queries/notifications";
 import { getMessagesForTrip } from "@/lib/db/queries/chat";
+import { sql } from "@/lib/db/client";
 import { apiError, Errors } from "@/lib/errors";
-import type { TripStatus } from "@/types";
+import type { SG1Option, TripStatus } from "@/types";
 
 export async function GET(
   _req: Request,
@@ -32,12 +33,17 @@ export async function GET(
 
     if (!isAllowed) return apiError(Errors.forbidden());
 
-    const [currentItinerary, history, messages, draftPlan] = await Promise.all([
+    const [currentItinerary, history, messages, draftPlan, rawOptions] = await Promise.all([
       getCurrentItinerary(id),
       getItineraryHistory(id),
       getMessagesForTrip(id),
       getTripDraftPlan(id),
+      sql`SELECT llm_raw_plan_json, selected FROM trip_raw_options WHERE trip_id = ${id} ORDER BY created_at ASC`,
     ]);
+
+    const sg1Options: SG1Option[] = rawOptions.map((r) => r["llm_raw_plan_json"] as SG1Option);
+    const selectedRow = rawOptions.find((r) => r["selected"] === true);
+    const selectedSg1Id = selectedRow ? (selectedRow["llm_raw_plan_json"] as SG1Option).id : null;
 
     return NextResponse.json({
       trip,
@@ -45,6 +51,8 @@ export async function GET(
       history,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       draftPlan,
+      sg1Options,
+      selectedSg1Id,
     });
   } catch (error) {
     return apiError(error);

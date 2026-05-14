@@ -4,15 +4,17 @@ import { useEffect, useState, use } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
-import { StatusBadge } from "@/components/StatusBadge";
 import { TripChatUI } from "@/components/TripChatUI";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
-import type { Trip } from "@/types";
+import type { Itinerary, SG1Option, Trip } from "@/types";
 
 interface TripDetailData {
   trip: Trip;
   messages: ChatMessage[];
   draftPlan: string | null;
+  sg1Options: SG1Option[];
+  selectedSg1Id: string | null;
+  history: Itinerary[];
 }
 
 function InviteBanner({
@@ -69,37 +71,6 @@ function InviteBanner({
         >
           Dismiss
         </button>
-      </div>
-    </div>
-  );
-}
-
-function TripHero({ trip }: { trip: Trip }) {
-  const destination = trip.destinationCity ?? trip.destinationCountry ?? "Adventure";
-  const durationDays = Math.ceil(
-    (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24),
-  );
-  return (
-    <div className="border-b border-line bg-white px-6 sm:px-8 py-4">
-      <div className="flex items-center gap-4 flex-wrap">
-        <StatusBadge status={trip.status} />
-        <h1
-          className="display-tight font-bold text-ink-900 text-xl sm:text-2xl"
-          style={{ lineHeight: 1.1 }}
-        >
-          {trip.title}
-        </h1>
-        <span className="text-sm text-ink-500 font-mono uppercase tracking-wider">
-          {trip.originAirport} → {destination}
-        </span>
-        <span className="text-sm text-ink-600">
-          {new Date(trip.startDate).toLocaleDateString()} –{" "}
-          {new Date(trip.endDate).toLocaleDateString()}
-          <span className="text-ink-400"> · {durationDays}d</span>
-        </span>
-        <span className="text-xs text-ink-500 font-mono uppercase">
-          {trip.tripType === "round_trip" ? "Round trip" : "One way"}
-        </span>
       </div>
     </div>
   );
@@ -175,13 +146,16 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
     <>
       <AppHeader crumbs={crumbs} />
       <main className="bg-cream-100 flex flex-col h-[calc(100vh-57px)]">
-        <TripHero trip={data.trip} />
         {inviteToken && <InviteBanner tripId={id} token={inviteToken} onDone={dismissInvite} />}
         <div className="flex-1 min-h-0">
           <TripChatUI
             initialTripId={data.trip.id}
             initialMessages={data.messages}
             initialPlanMarkdown={data.draftPlan}
+            trip={data.trip}
+            sg1Options={data.sg1Options}
+            selectedSg1Id={data.selectedSg1Id}
+            versions={data.history}
           />
         </div>
       </main>

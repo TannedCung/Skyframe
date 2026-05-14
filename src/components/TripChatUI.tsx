@@ -2,7 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { renderMarkdown } from "@/lib/plan/markdown";
+import { PlanPanel } from "@/components/plan/PlanPanel";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
+import type { Itinerary, SG1Option, Trip } from "@/types";
 
 interface Message {
   role: "user" | "model";
@@ -17,6 +20,14 @@ interface TripChatUIProps {
   initialMessages?: ChatMessage[];
   /** Persisted draft plan markdown to render in the plan panel. */
   initialPlanMarkdown?: string | null;
+  /** Trip details for the plan header. */
+  trip?: Trip | null;
+  /** SG1 options shown in the Overview tab. */
+  sg1Options?: SG1Option[];
+  /** ID of the currently selected SG1 option, if any. */
+  selectedSg1Id?: string | null;
+  /** Itinerary versions shown in the Versions tab. */
+  versions?: Itinerary[];
   /** Navigate away when the agent finalises (used on /trip/new). */
   redirectOnFinalize?: boolean;
 }
@@ -32,6 +43,10 @@ export function TripChatUI({
   initialTripId,
   initialMessages,
   initialPlanMarkdown,
+  trip = null,
+  sg1Options = [],
+  selectedSg1Id = null,
+  versions = [],
   redirectOnFinalize = false,
 }: TripChatUIProps = {}) {
   const router = useRouter();
@@ -52,7 +67,7 @@ export function TripChatUI({
   });
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const planPanelRef = useRef<HTMLDivElement>(null);
+  const planContentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -135,7 +150,7 @@ export function TripChatUI({
       if (!text || !selection || selection.rangeCount === 0) return;
 
       const anchor = selection.anchorNode;
-      if (!anchor || !planPanelRef.current?.contains(anchor)) return;
+      if (!anchor || !planContentRef.current?.contains(anchor)) return;
 
       e.preventDefault();
       const quoted = text
@@ -162,12 +177,113 @@ export function TripChatUI({
     function onSelectionChange() {
       const sel = window.getSelection();
       const has = !!sel?.toString().trim();
-      const inside = !!(sel?.anchorNode && planPanelRef.current?.contains(sel.anchorNode));
+      const inside = !!(sel?.anchorNode && planContentRef.current?.contains(sel.anchorNode));
       setQuoteHint(has && inside);
     }
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
   }, [planMarkdown]);
+
+  // Shared streaming routine used by both manual send and structured patches.
+  const streamMessage = useCallback(
+    async (history: ChatMessage[]) => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/trips/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, tripId }),
+        });
+
+        if (!res.ok || !res.body) throw new Error("Request failed");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+
+            let event: Record<string, unknown>;
+            try {
+              event = JSON.parse(raw) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
+
+            if (event.type === "trip_created") {
+              setTripId(event.tripId as string);
+            } else if (event.type === "plan_update") {
+              setPlanMarkdown(event.markdown as string);
+            } else if (event.type === "text") {
+              const delta = event.delta as string;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "model") {
+                  next[next.length - 1] = { ...last, content: last.content + delta };
+                }
+                return next;
+              });
+            } else if (event.type === "done") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "model") {
+                  next[next.length - 1] = { ...last, streaming: false };
+                }
+                return next;
+              });
+              const redirect = event.redirect as string | undefined;
+              if (redirect && redirectOnFinalize) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setTimeout(() => router.push(redirect as any), 1000);
+              }
+            } else if (event.type === "error") {
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "model") {
+                  next[next.length - 1] = {
+                    ...last,
+                    content: (event.message as string) ?? "Something went wrong.",
+                    streaming: false,
+                  };
+                }
+                return next;
+              });
+            }
+          }
+        }
+      } catch {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === "model") {
+            next[next.length - 1] = {
+              ...last,
+              content: "Sorry, something went wrong. Please try again.",
+              streaming: false,
+            };
+          }
+          return next;
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [tripId, router, redirectOnFinalize],
+  );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -176,109 +292,42 @@ export function TripChatUI({
     const userMsg: Message = { role: "user", content: text };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setLoading(true);
-
     setMessages((prev) => [...prev, { role: "model", content: "", streaming: true }]);
 
-    const chatHistory: ChatMessage[] = [...messages, userMsg].map((m) => ({
+    const history: ChatMessage[] = [...messages, userMsg].map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
-    try {
-      const res = await fetch("/api/trips/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: chatHistory, tripId }),
-      });
+    await streamMessage(history);
+  }, [input, loading, messages, streamMessage]);
 
-      if (!res.ok || !res.body) throw new Error("Request failed");
+  // Pre-fill the textarea with a scoped prompt and focus it (Phase 2: Refine button).
+  const prefillInput = useCallback((text: string) => {
+    setInput(text);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      ta.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, []);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (!raw) continue;
-
-          let event: Record<string, unknown>;
-          try {
-            event = JSON.parse(raw) as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-
-          if (event.type === "trip_created") {
-            setTripId(event.tripId as string);
-          } else if (event.type === "plan_update") {
-            setPlanMarkdown(event.markdown as string);
-          } else if (event.type === "text") {
-            const delta = event.delta as string;
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.role === "model") {
-                next[next.length - 1] = { ...last, content: last.content + delta };
-              }
-              return next;
-            });
-          } else if (event.type === "done") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.role === "model") {
-                next[next.length - 1] = { ...last, streaming: false };
-              }
-              return next;
-            });
-            const redirect = event.redirect as string | undefined;
-            if (redirect && redirectOnFinalize) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setTimeout(() => router.push(redirect as any), 1000);
-            }
-          } else if (event.type === "error") {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last?.role === "model") {
-                next[next.length - 1] = {
-                  ...last,
-                  content: (event.message as string) ?? "Something went wrong.",
-                  streaming: false,
-                };
-              }
-              return next;
-            });
-          }
-        }
-      }
-    } catch {
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last?.role === "model") {
-          next[next.length - 1] = {
-            ...last,
-            content: "Sorry, something went wrong. Please try again.",
-            streaming: false,
-          };
-        }
-        return next;
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [input, loading, messages, tripId, router, redirectOnFinalize]);
+  // Send a structured user message directly, bypassing the textarea (Phase 3: inline edit).
+  const sendPatch = useCallback(
+    async (text: string) => {
+      if (!text.trim() || loading) return;
+      const userMsg: Message = { role: "user", content: text };
+      setMessages((prev) => [...prev, userMsg, { role: "model", content: "", streaming: true }]);
+      const history: ChatMessage[] = [...messages, userMsg].map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      await streamMessage(history);
+    },
+    [loading, messages, streamMessage],
+  );
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -287,12 +336,7 @@ export function TripChatUI({
     }
   }
 
-  const renderedPlan = useMemo(
-    () => (planMarkdown ? renderMarkdown(planMarkdown) : null),
-    [planMarkdown],
-  );
-
-  const showPlan = !!planMarkdown;
+  const showPlan = !!planMarkdown || sg1Options.length > 0 || versions.length > 0;
 
   const renderedMessages = useMemo(
     () =>
@@ -366,30 +410,6 @@ export function TripChatUI({
     </div>
   );
 
-  const planPanel = (
-    <div className="flex flex-col h-full bg-white border-l border-line">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-cream-50">
-        <h2 className="display-tight text-sm font-semibold text-ink-900 tracking-wide uppercase">
-          Trip Plan (Draft)
-        </h2>
-        <span
-          className={`text-xs transition-opacity ${
-            quoteHint ? "opacity-100 text-teal-600" : "opacity-50 text-ink-500"
-          }`}
-        >
-          Select text · Ctrl+L to quote
-        </span>
-      </div>
-      <div
-        ref={planPanelRef}
-        data-testid="plan-content"
-        className="flex-1 overflow-y-auto px-6 py-5 prose prose-sm max-w-none text-ink-800 selection:bg-coral-200"
-      >
-        {renderedPlan}
-      </div>
-    </div>
-  );
-
   return (
     <div ref={containerRef} className="h-full w-full relative">
       <div
@@ -410,7 +430,19 @@ export function TripChatUI({
             showPlan ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          {showPlan && planPanel}
+          {showPlan && (
+            <PlanPanel
+              ref={planContentRef}
+              markdown={planMarkdown}
+              trip={trip}
+              sg1Options={sg1Options}
+              selectedSg1Id={selectedSg1Id}
+              versions={versions}
+              onRefine={prefillInput}
+              onPatch={(msg) => void sendPatch(msg)}
+              quoteHint={{ active: quoteHint, text: "Ctrl+L to quote" }}
+            />
+          )}
         </div>
       </div>
       {showPlan && (
@@ -425,210 +457,4 @@ export function TripChatUI({
       )}
     </div>
   );
-}
-
-// ─── Tiny markdown renderer (headings, lists, bold/italic/code, paragraphs) ───
-
-function renderMarkdown(md: string): React.ReactNode {
-  const lines = md.split("\n");
-  const out: React.ReactNode[] = [];
-  let listBuffer: string[] = [];
-  let paraBuffer: string[] = [];
-  let tableRows: string[][] = [];
-  let tableHeader: string[] = [];
-
-  function flushTable() {
-    if (tableHeader.length === 0) return;
-    out.push(
-      <div key={`tbl-${out.length}`} className="my-3 overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-cream-100">
-              {tableHeader.map((h, i) => (
-                <th key={i} className="border border-line px-3 py-2 text-left font-semibold">
-                  {renderInline(h)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tableRows.map((row, ri) => (
-              <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-cream-50"}>
-                {row.map((cell, ci) => (
-                  <td key={ci} className="border border-line px-3 py-2">
-                    {renderInline(cell)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>,
-    );
-    tableHeader = [];
-    tableRows = [];
-  }
-
-  function flushList() {
-    if (listBuffer.length === 0) return;
-    out.push(
-      <ul key={`ul-${out.length}`} className="list-disc pl-6 my-2 space-y-1">
-        {listBuffer.map((item, i) => (
-          <li key={i}>{renderInline(item)}</li>
-        ))}
-      </ul>,
-    );
-    listBuffer = [];
-  }
-
-  function flushPara() {
-    if (paraBuffer.length === 0) return;
-    out.push(
-      <p key={`p-${out.length}`} className="my-2 leading-relaxed">
-        {renderInline(paraBuffer.join(" "))}
-      </p>,
-    );
-    paraBuffer = [];
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\s+$/, "");
-
-    if (line.trim() === "") {
-      flushTable();
-      flushList();
-      flushPara();
-      continue;
-    }
-
-    // Table separator row: |---|---|---|
-    if (/^\|[\s-:|]+\|$/.test(line)) {
-      continue;
-    }
-
-    // Table row: | cell | cell | cell |
-    const tableMatch = /^\|(.+)\|$/.exec(line);
-    if (tableMatch) {
-      flushList();
-      flushPara();
-      const cells = tableMatch[1]!.split("|").map((c) => c.trim());
-      if (tableHeader.length === 0) {
-        tableHeader = cells;
-      } else {
-        tableRows.push(cells);
-      }
-      continue;
-    }
-
-    // If we were building a table but hit a non-table line, flush it
-    if (tableHeader.length > 0) {
-      flushTable();
-    }
-
-    const h3 = /^###\s+(.*)$/.exec(line);
-    const h2 = /^##\s+(.*)$/.exec(line);
-    const h1 = /^#\s+(.*)$/.exec(line);
-    const li = /^[-*]\s+(.*)$/.exec(line);
-    const bq = /^>\s+(.*)$/.exec(line);
-
-    if (h1 || h2 || h3) {
-      flushList();
-      flushPara();
-      if (h1) {
-        out.push(
-          <h1 key={`h-${out.length}`} className="display-tight text-2xl font-bold mt-4 mb-3">
-            {renderInline(h1[1]!)}
-          </h1>,
-        );
-      } else if (h2) {
-        out.push(
-          <h2 key={`h-${out.length}`} className="display-tight text-lg font-semibold mt-4 mb-2">
-            {renderInline(h2[1]!)}
-          </h2>,
-        );
-      } else if (h3) {
-        out.push(
-          <h3
-            key={`h-${out.length}`}
-            className="text-sm font-semibold uppercase tracking-wide text-ink-700 mt-3 mb-1"
-          >
-            {renderInline(h3[1]!)}
-          </h3>,
-        );
-      }
-      continue;
-    }
-
-    if (li) {
-      flushPara();
-      listBuffer.push(li[1]!);
-      continue;
-    }
-
-    if (bq) {
-      flushList();
-      flushPara();
-      out.push(
-        <blockquote
-          key={`bq-${out.length}`}
-          className="border-l-4 border-teal-400 pl-3 py-1 my-2 text-ink-600 italic"
-        >
-          {renderInline(bq[1]!)}
-        </blockquote>,
-      );
-      continue;
-    }
-
-    flushList();
-    paraBuffer.push(line);
-  }
-
-  flushTable();
-  flushList();
-  flushPara();
-  return out;
-}
-
-function renderInline(text: string): React.ReactNode {
-  // Order matters: code first (won't be re-parsed), then bold, then italic.
-  const parts: React.ReactNode[] = [];
-  let remaining = text;
-  let key = 0;
-
-  const patterns: Array<{ re: RegExp; render: (m: RegExpExecArray) => React.ReactNode }> = [
-    {
-      re: /`([^`]+)`/,
-      render: (m) => (
-        <code key={key++} className="bg-cream-200 rounded px-1 text-[0.85em]">
-          {m[1]}
-        </code>
-      ),
-    },
-    { re: /\*\*([^*]+)\*\*/, render: (m) => <strong key={key++}>{m[1]}</strong> },
-    { re: /\*([^*]+)\*/, render: (m) => <em key={key++}>{m[1]}</em> },
-  ];
-
-  while (remaining.length > 0) {
-    let earliest: {
-      match: RegExpExecArray;
-      render: (m: RegExpExecArray) => React.ReactNode;
-    } | null = null;
-    for (const p of patterns) {
-      const m = p.re.exec(remaining);
-      if (m && (earliest === null || m.index < earliest.match.index)) {
-        earliest = { match: m, render: p.render };
-      }
-    }
-    if (!earliest) {
-      parts.push(remaining);
-      break;
-    }
-    if (earliest.match.index > 0) {
-      parts.push(remaining.slice(0, earliest.match.index));
-    }
-    parts.push(earliest.render(earliest.match));
-    remaining = remaining.slice(earliest.match.index + earliest.match[0].length);
-  }
-
-  return parts;
 }
