@@ -9,12 +9,23 @@ import type { Trip } from "@/types";
 
 function TripCardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl border border-line overflow-hidden animate-pulse">
+    <div className="rounded-[18px] border border-line overflow-hidden animate-pulse bg-cream-50">
       <div className="h-24 bg-cream-200" />
       <div className="p-5 space-y-3">
         <div className="h-4 bg-cream-200 rounded w-2/3" />
         <div className="h-3 bg-cream-200 rounded w-1/2" />
       </div>
+    </div>
+  );
+}
+
+function Rule({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="inline-block w-8 h-px bg-ink-900" />
+      <span className="mono-label" style={{ color: "#6B5A4D" }}>
+        {label}
+      </span>
     </div>
   );
 }
@@ -50,23 +61,47 @@ export default function DashboardPage() {
     );
   }
 
+  const watchingCount = trips.filter((t) => t.status === "archived").length;
+
   return (
     <>
       <AppHeader crumbs={[{ label: "My Trips" }]} />
       <main className="min-h-screen bg-cream-100 p-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-end justify-between mb-8">
+        <div className="max-w-[1100px] mx-auto">
+          {/* Header */}
+          <div className="flex items-end justify-between mb-9">
             <div>
-              <h1 className="display-tight text-4xl font-bold text-ink-900">My Trips</h1>
+              <Rule label="Spring · Issue №14" />
+              <h1
+                className="mt-3.5 mb-1"
+                style={{
+                  fontFamily: "'Newsreader', Georgia, serif",
+                  fontWeight: 500,
+                  fontSize: "clamp(40px, 5vw, 56px)",
+                  lineHeight: 1,
+                  letterSpacing: "-0.02em",
+                  color: "var(--color-ink-900, #2A1E15)",
+                }}
+              >
+                My trips
+              </h1>
               {session?.user?.name && (
-                <p className="text-ink-500 mt-1">Welcome back, {session.user.name}</p>
+                <p className="text-ink-500 text-sm" style={{ margin: 0 }}>
+                  Welcome back, {session.user.name}
+                  {watchingCount > 0 &&
+                    ` — ${watchingCount} trip${watchingCount > 1 ? "s" : ""} ${watchingCount === 1 ? "is" : "are"} watching prices.`}
+                </p>
               )}
             </div>
             <button
               onClick={() => router.push("/trip/new")}
-              className="bg-coral-500 text-ink-900 px-5 py-2.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors"
+              className="px-5 py-3 rounded-xl font-semibold text-sm transition-colors hover:opacity-90"
+              style={{
+                background: "var(--color-coral-500, #F48F68)",
+                color: "var(--color-ink-900, #2A1E15)",
+              }}
             >
-              + New Trip
+              ＋ New trip
             </button>
           </div>
 
@@ -77,28 +112,67 @@ export default function DashboardPage() {
           )}
 
           {loading ? (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4.5 md:grid-cols-2">
               <TripCardSkeleton />
               <TripCardSkeleton />
               <TripCardSkeleton />
             </div>
           ) : trips.length === 0 ? (
             <div className="text-center py-20 text-ink-400">
-              <p className="text-xl mb-4">No trips yet</p>
+              <p className="text-xl mb-4" style={{ fontFamily: "'Newsreader', Georgia, serif" }}>
+                No trips yet
+              </p>
               <p className="text-sm mb-6">Create your first AI-powered trip plan!</p>
               <button
                 onClick={() => router.push("/trip/new")}
-                className="bg-coral-500 text-ink-900 px-6 py-2.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors"
+                className="px-6 py-2.5 rounded-lg font-semibold text-sm transition-colors hover:opacity-90"
+                style={{
+                  background: "var(--color-coral-500, #F48F68)",
+                  color: "var(--color-ink-900, #2A1E15)",
+                }}
               >
                 Plan a trip
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {trips.map((trip) => (
-                <TripCard key={trip.id} trip={trip} />
-              ))}
-            </div>
+            <>
+              <div className="grid gap-4.5 md:grid-cols-2">
+                {trips.map((trip, i) => (
+                  <TripCard key={trip.id} trip={trip} featured={i === 0} />
+                ))}
+              </div>
+
+              {/* Archive */}
+              <div
+                className="mt-10 p-5 px-6 rounded-[14px] flex items-center justify-between"
+                style={{ border: "1px dashed var(--color-line, #EFE4C8)" }}
+              >
+                <div>
+                  <span className="mono-label">Archive · {trips.length} past trips</span>
+                  <div
+                    className="mt-1"
+                    style={{
+                      fontFamily: "'Newsreader', serif",
+                      fontSize: 18,
+                      fontStyle: "italic",
+                      color: "var(--color-ink-800, #4A3A2E)",
+                    }}
+                  >
+                    {trips
+                      .map((t) => t.destinationCity ?? "Flexible")
+                      .slice(0, 5)
+                      .join(", ")}
+                    …
+                  </div>
+                </div>
+                <span
+                  className="text-sm underline cursor-pointer hover:text-ink-900 transition-colors"
+                  style={{ color: "var(--color-ink-700, #6B5A4D)", textUnderlineOffset: 4 }}
+                >
+                  Open archive →
+                </span>
+              </div>
+            </>
           )}
         </div>
       </main>

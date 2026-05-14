@@ -9,15 +9,24 @@ interface PlanHeaderProps {
 export function PlanHeader({ trip, hint }: PlanHeaderProps) {
   if (!trip) {
     return (
-      <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-cream-50">
-        <h2 className="display-tight text-sm font-semibold text-ink-900 tracking-wide uppercase">
-          Trip Plan (Draft)
-        </h2>
+      <div
+        className="flex items-center justify-between px-5 py-3 border-b"
+        style={{
+          background: "var(--color-cream-50, #FFFAEC)",
+          borderColor: "var(--color-line, #EFE4C8)",
+        }}
+      >
+        <span className="mono-label" style={{ color: "var(--color-ink-700, #6B5A4D)" }}>
+          Trip Plan · Draft
+        </span>
         {hint && (
           <span
-            className={`text-xs transition-opacity ${
-              hint.active ? "opacity-100 text-teal-600" : "opacity-50 text-ink-500"
-            }`}
+            className="text-xs transition-opacity"
+            style={{
+              color: hint.active
+                ? "var(--color-teal-600, #2FA5A1)"
+                : "var(--color-ink-500, #968471)",
+            }}
           >
             {hint.text}
           </span>
@@ -36,27 +45,62 @@ export function PlanHeader({ trip, hint }: PlanHeaderProps) {
   const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
   return (
-    <div className="border-b border-line bg-cream-50 px-5 py-3">
-      <div className="flex items-center justify-between gap-3 mb-1.5">
-        <h2 className="display-tight text-sm font-semibold text-ink-900 tracking-wide uppercase">
-          Trip Plan
-        </h2>
+    <div
+      className="border-b px-5 py-4"
+      style={{
+        background: "var(--color-cream-50, #FFFAEC)",
+        borderColor: "var(--color-line, #EFE4C8)",
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="mono-label" style={{ color: "var(--color-ink-500, #968471)" }}>
+          Trip plan ·{" "}
+          {trip.status === "active"
+            ? "Current"
+            : trip.status === "draft"
+              ? "Draft"
+              : "Watching prices"}
+        </span>
         <StatusBadge status={trip.status} />
       </div>
-      <div className="flex items-center gap-3 flex-wrap text-xs text-ink-700">
-        <span className="font-mono uppercase tracking-wider text-ink-900">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2
+          className="m-0 font-medium"
+          style={{
+            fontFamily: "'Newsreader', Georgia, serif",
+            fontSize: "22px",
+            letterSpacing: "-0.01em",
+            color: "var(--color-ink-900, #2A1E15)",
+          }}
+        >
+          {trip.title}
+        </h2>
+      </div>
+      <div
+        className="flex items-center gap-3 mt-1.5 text-xs"
+        style={{ color: "var(--color-ink-500, #968471)" }}
+      >
+        <span
+          style={{ fontFamily: "'Geist Mono', monospace", color: "var(--color-ink-900, #2A1E15)" }}
+        >
           {trip.originAirport} → {destination}
         </span>
-        <span className="text-ink-400">·</span>
+        <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
         <span>
           {fmt(start)} – {fmt(end)}
         </span>
-        <span className="text-ink-400">·</span>
-        <span className="text-ink-500">{durationDays}d</span>
+        <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
+        <span>{durationDays}d</span>
+        {trip.flexibilityDays > 0 && (
+          <>
+            <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
+            <span>±{trip.flexibilityDays}d flex</span>
+          </>
+        )}
         {hint && hint.active && (
           <>
-            <span className="text-ink-400">·</span>
-            <span className="text-teal-600">{hint.text}</span>
+            <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
+            <span style={{ color: "var(--color-teal-600, #2FA5A1)" }}>{hint.text}</span>
           </>
         )}
       </div>

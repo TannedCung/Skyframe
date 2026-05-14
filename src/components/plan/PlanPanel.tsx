@@ -31,10 +31,16 @@ export const PlanPanel = forwardRef<HTMLDivElement, PlanPanelProps>(function Pla
   const empty = isEmptyParsed(parsed);
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-line">
+    <div
+      className="flex flex-col h-full"
+      style={{
+        background: "var(--color-cream-50, #FFFAEC)",
+        borderLeft: "1px solid var(--color-line, #EFE4C8)",
+      }}
+    >
       <PlanHeader trip={trip} hint={quoteHint} />
       <TabBar active={currentTab} tabs={tabs} onChange={setActive} daysCount={parsed.days.length} />
-      <div ref={ref} data-testid="plan-content" className="flex-1 overflow-y-auto">
+      <div ref={ref} data-testid="plan-content" className="flex-1 overflow-y-auto px-5 py-[18px]">
         {empty ? (
           <EmptyState />
         ) : (
@@ -84,7 +90,13 @@ function TabBar({
     { key: "notes", label: "Notes" },
   ];
   return (
-    <div className="flex items-center gap-0.5 border-b border-line bg-white px-3 overflow-x-auto">
+    <div
+      className="flex items-center gap-1 border-b px-3.5 overflow-x-auto"
+      style={{
+        background: "var(--color-cream-50, #FFFAEC)",
+        borderColor: "var(--color-line, #EFE4C8)",
+      }}
+    >
       {items.map((item) => {
         const available = tabs[item.key];
         const isActive = active === item.key;
@@ -214,9 +226,9 @@ function NotesTab({ markdown }: { markdown: string }) {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="text-[11px] font-mono uppercase tracking-wider text-ink-500 mb-1.5">
+      <span className="mono-label block mb-1.5" style={{ color: "var(--color-ink-500, #968471)" }}>
         {label}
-      </h3>
+      </span>
       {children}
     </section>
   );

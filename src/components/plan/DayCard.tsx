@@ -46,25 +46,48 @@ export function DayCard({ day, onRefine, onPatch }: DayCardProps) {
   }
 
   return (
-    <section className="rounded-xl border border-line bg-white overflow-hidden">
-      <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-cream-50 border-b border-line">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-coral-500 text-ink-900 text-xs font-bold shrink-0">
+    <section className="rounded-[14px] border border-line bg-cream-50 overflow-hidden">
+      <header
+        className="flex items-center justify-between gap-3 px-4 py-3 border-b"
+        style={{
+          background: "var(--color-cream-100, #FFF6DE)",
+          borderColor: "var(--color-line, #EFE4C8)",
+        }}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full text-[12px] font-bold shrink-0"
+            style={{
+              background: "var(--color-coral-500, #F48F68)",
+              color: "var(--color-ink-900, #2A1E15)",
+              fontFamily: "'Geist Mono', monospace",
+            }}
+          >
             {day.number}
           </span>
-          <h3 className="text-sm font-semibold text-ink-900 truncate">{day.title || "Day"}</h3>
+          <h3
+            className="text-sm font-semibold truncate"
+            style={{
+              fontFamily: "'Bricolage Grotesque', sans-serif",
+              letterSpacing: "-0.01em",
+              color: "var(--color-ink-900, #2A1E15)",
+            }}
+          >
+            {day.title || `Day ${day.number}`}
+          </h3>
         </div>
         {onRefine && (
           <button
             type="button"
-            onClick={() => onRefine(`Refine ${heading}: `)}
-            className="shrink-0 text-[11px] font-medium text-coral-700 hover:text-coral-600 hover:bg-coral-50 px-2 py-1 rounded transition-colors"
+            onClick={() => onRefine(`Refine Day ${day.number}: `)}
+            className="shrink-0 text-[11px] font-medium hover:bg-coral-100 px-2 py-1 rounded-full transition-colors"
+            style={{ color: "var(--color-coral-700, #B85633)" }}
           >
             Refine ↗
           </button>
         )}
       </header>
-      <div className="px-4 py-3 text-sm text-ink-800">
+      <div className="px-4 py-3 text-sm" style={{ color: "var(--color-ink-800, #4A3A2E)" }}>
         {lines.length === 0 || day.body.trim() === "" ? (
           <p className="text-ink-400 italic text-xs">No details yet.</p>
         ) : (
@@ -155,7 +178,7 @@ function DayBody({
                 if (isEditing) {
                   return (
                     <li key={item.idx} className="flex items-start gap-2">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-coral-500 mt-2 shrink-0" />
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-coral-500 mt-[7px] shrink-0" />
                       <div className="flex-1">
                         <textarea
                           autoFocus
@@ -207,7 +230,7 @@ function DayBody({
                     onClick={() => interactive && onStartEdit(item.idx, item.text)}
                     title={interactive ? "Click to edit" : undefined}
                   >
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-coral-500 mt-2 shrink-0" />
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-coral-500 mt-[7px] shrink-0" />
                     <span className="flex-1">{renderInline(item.text)}</span>
                   </li>
                 );

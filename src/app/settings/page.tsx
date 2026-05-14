@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import type { UserPreferences, GdsProvider } from "@/types";
 
-const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "SGD", "VND", "THB"];
-
 const GDS_OPTIONS: { value: GdsProvider; label: string; description: string }[] = [
   {
     value: "auto",
@@ -17,18 +15,18 @@ const GDS_OPTIONS: { value: GdsProvider; label: string; description: string }[] 
   {
     value: "kiwi",
     label: "Kiwi Tequila",
-    description: "Real-time prices with global route coverage",
+    description: "Real-time prices, global coverage",
   },
   {
     value: "vietjet",
     label: "VietJet Air",
-    description: "VND prices — requires the token service to be running",
+    description: "VND prices — token service required",
   },
   { value: "airlabs", label: "AirLabs", description: "Schedule data only, no pricing" },
   {
     value: "google",
     label: "Google Flights",
-    description: "Google's flight search engine — no API key needed",
+    description: "Google's flight search engine — no API key",
   },
 ];
 const TIMEZONES = [
@@ -43,6 +41,17 @@ const TIMEZONES = [
   "America/New_York",
   "America/Los_Angeles",
 ];
+
+function Rule({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="inline-block w-8 h-px bg-ink-900" />
+      <span className="mono-label" style={{ color: "#6B5A4D" }}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -114,39 +123,85 @@ export default function SettingsPage() {
     <>
       <AppHeader crumbs={crumbs} />
       <main className="min-h-screen bg-cream-100 p-8">
-        <div className="max-w-xl mx-auto space-y-6">
-          <h1 className="display-tight text-4xl font-bold text-ink-900">Settings</h1>
+        <div className="max-w-[620px] mx-auto space-y-5">
+          {/* Title */}
+          <Rule label={`Account · ${session?.user?.name ?? ""}`} />
+          <h1
+            className="mt-3 mb-7"
+            style={{
+              fontFamily: "'Newsreader', Georgia, serif",
+              fontWeight: 500,
+              fontSize: "clamp(40px, 5vw, 56px)",
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+              color: "var(--color-ink-900, #2A1E15)",
+            }}
+          >
+            Settings
+          </h1>
 
           {/* Profile card */}
-          <div className="bg-white rounded-xl border border-line p-6 space-y-4">
-            <h2 className="display-h2 font-semibold text-ink-900">Profile</h2>
+          <section
+            className="rounded-2xl border border-line p-6 space-y-4"
+            style={{ background: "var(--color-cream-50, #FFFAEC)" }}
+          >
+            <h2
+              className="font-semibold text-lg"
+              style={{
+                fontFamily: "'Bricolage Grotesque', sans-serif",
+                letterSpacing: "-0.01em",
+                color: "var(--color-ink-900, #2A1E15)",
+              }}
+            >
+              Profile
+            </h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-ink-500 mb-1">Name</p>
-                <p className="font-medium text-ink-900 text-sm">{session?.user?.name ?? "—"}</p>
+                <span className="mono-label block mb-1">Name</span>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-ink-900, #2A1E15)" }}
+                >
+                  {session?.user?.name ?? "—"}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-ink-500 mb-1">Email</p>
-                <p className="font-medium text-ink-900 text-sm">{session?.user?.email ?? "—"}</p>
+                <span className="mono-label block mb-1">Email</span>
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-ink-900, #2A1E15)" }}
+                >
+                  {session?.user?.email ?? "—"}
+                </p>
               </div>
             </div>
-            <div className="pt-4 border-t border-line">
+            <div className="pt-4 border-t" style={{ borderColor: "var(--color-line, #EFE4C8)" }}>
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
-                className="font-semibold transition-colors"
+                className="text-sm font-semibold transition-colors hover:opacity-80"
                 style={{ color: "#D85A45" }}
               >
-                Sign Out
+                Sign out
               </button>
             </div>
-          </div>
+          </section>
 
-          {/* Preferences form */}
+          {/* Preferences */}
           <form
             onSubmit={handleSave}
-            className="bg-white rounded-xl border border-line p-6 space-y-5"
+            className="rounded-2xl border border-line p-6 space-y-6"
+            style={{ background: "var(--color-cream-50, #FFFAEC)" }}
           >
-            <h2 className="display-h2 font-semibold text-ink-900">Preferences</h2>
+            <h2
+              className="font-semibold text-lg"
+              style={{
+                fontFamily: "'Bricolage Grotesque', sans-serif",
+                letterSpacing: "-0.01em",
+                color: "var(--color-ink-900, #2A1E15)",
+              }}
+            >
+              Preferences
+            </h2>
 
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -159,58 +214,83 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {/* Toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-ink-700">Email notifications</p>
-                <p className="text-xs text-ink-500 mt-0.5">
-                  Receive emails when flight prices change or a new itinerary is ready
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-ink-800, #4A3A2E)" }}
+                >
+                  Email notifications
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "var(--color-ink-500, #968471)" }}>
+                  Email me when prices change or a new itinerary is ready
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setPrefs((p) => ({ ...p, notificationEmail: !p.notificationEmail }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 ${
-                  prefs.notificationEmail ? "bg-coral-500" : "bg-cream-200"
-                }`}
+                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                style={{
+                  background: prefs.notificationEmail
+                    ? "var(--color-coral-500, #F48F68)"
+                    : "var(--color-cream-200, #F8EDC9)",
+                }}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    prefs.notificationEmail ? "translate-x-6" : "translate-x-1"
-                  }`}
+                  className="inline-block h-5 w-5 rounded-full bg-white transition-transform shadow"
+                  style={{
+                    transform: prefs.notificationEmail ? "translateX(22px)" : "translateX(2px)",
+                  }}
                 />
               </button>
             </div>
 
+            {/* Default currency */}
             <div>
               <label
-                htmlFor="defaultCurrency"
-                className="block text-sm font-medium text-ink-700 mb-1"
+                className="block text-sm font-medium mb-1.5"
+                style={{ color: "var(--color-ink-800, #4A3A2E)" }}
               >
                 Default currency
               </label>
-              <select
-                id="defaultCurrency"
-                value={prefs.defaultCurrency}
-                onChange={(e) => setPrefs((p) => ({ ...p, defaultCurrency: e.target.value }))}
-                className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+              <div
+                className="flex items-center justify-between px-3.5 py-2.5 rounded-[10px] border"
+                style={{
+                  background: "var(--color-cream-50, #FFFAEC)",
+                  borderColor: "var(--color-cream-300, #EFE2B5)",
+                }}
               >
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <span className="text-sm">
+                  {prefs.defaultCurrency} —{" "}
+                  {new Intl.NumberFormat("en", {
+                    style: "currency",
+                    currency: prefs.defaultCurrency,
+                  })
+                    .format(0)
+                    .replace(/0\.00/, "")
+                    .trim()}
+                </span>
+                <span style={{ color: "var(--color-ink-500, #968471)" }}>▾</span>
+              </div>
             </div>
 
+            {/* Timezone */}
             <div>
-              <label htmlFor="timezone" className="block text-sm font-medium text-ink-700 mb-1">
+              <label
+                className="block text-sm font-medium mb-1.5"
+                style={{ color: "var(--color-ink-800, #4A3A2E)" }}
+              >
                 Timezone
               </label>
               <select
-                id="timezone"
                 value={prefs.timezone}
                 onChange={(e) => setPrefs((p) => ({ ...p, timezone: e.target.value }))}
-                className="w-full border border-cream-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                className="w-full px-3.5 py-2.5 rounded-[10px] border text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 appearance-none cursor-pointer"
+                style={{
+                  background: "var(--color-cream-50, #FFFAEC)",
+                  borderColor: "var(--color-cream-300, #EFE2B5)",
+                }}
               >
                 {TIMEZONES.map((tz) => (
                   <option key={tz} value={tz}>
@@ -220,43 +300,79 @@ export default function SettingsPage() {
               </select>
             </div>
 
-            {/* GDS provider selection */}
+            {/* GDS provider */}
             <div>
-              <p className="text-sm font-medium text-ink-700 mb-2">Flight Data Source</p>
-              <p className="text-xs text-ink-500 mb-3">
-                Choose which provider to use when searching for flights
+              <p
+                className="text-sm font-medium mb-0.5"
+                style={{ color: "var(--color-ink-800, #4A3A2E)" }}
+              >
+                Flight data source
+              </p>
+              <p className="text-xs mb-3" style={{ color: "var(--color-ink-500, #968471)" }}>
+                Which provider to use when searching for flights.
               </p>
               <div className="space-y-2">
-                {GDS_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.value}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      prefs.gdsProvider === opt.value
-                        ? "border-coral-500 bg-coral-50"
-                        : "border-cream-300 hover:border-cream-400"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="gdsProvider"
-                      value={opt.value}
-                      checked={prefs.gdsProvider === opt.value}
-                      onChange={() => setPrefs((p) => ({ ...p, gdsProvider: opt.value }))}
-                      className="mt-0.5 accent-coral-500"
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-ink-800">{opt.label}</p>
-                      <p className="text-xs text-ink-500 mt-0.5">{opt.description}</p>
-                    </div>
-                  </label>
-                ))}
+                {GDS_OPTIONS.map((opt) => {
+                  const active = prefs.gdsProvider === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      className="flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors"
+                      style={{
+                        borderColor: active
+                          ? "var(--color-coral-500, #F48F68)"
+                          : "var(--color-cream-300, #EFE2B5)",
+                        background: active
+                          ? "var(--color-coral-100, #FFE5DA)"
+                          : "var(--color-cream-50, #FFFAEC)",
+                      }}
+                    >
+                      <span
+                        className="mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0"
+                        style={{
+                          border: `1.5px solid ${active ? "var(--color-coral-500, #F48F68)" : "var(--color-ink-400, #B6A593)"}`,
+                          background: "var(--color-cream-50, #FFFAEC)",
+                          position: "relative",
+                        }}
+                      >
+                        {active && (
+                          <span
+                            className="absolute rounded-full"
+                            style={{
+                              inset: 3,
+                              background: "var(--color-coral-500, #F48F68)",
+                            }}
+                          />
+                        )}
+                      </span>
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--color-ink-800, #4A3A2E)" }}
+                        >
+                          {opt.label}
+                        </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: "var(--color-ink-500, #968471)" }}
+                        >
+                          {opt.description}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
             <button
               type="submit"
               disabled={saving}
-              className="w-full bg-coral-500 text-ink-900 py-2.5 rounded-lg font-semibold hover:bg-coral-600 transition-colors disabled:opacity-50"
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 hover:opacity-90"
+              style={{
+                background: "var(--color-coral-500, #F48F68)",
+                color: "var(--color-ink-900, #2A1E15)",
+              }}
             >
               {saving ? "Saving…" : "Save preferences"}
             </button>

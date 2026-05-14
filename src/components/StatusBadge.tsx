@@ -1,15 +1,30 @@
 const statusStyles: Record<string, string> = {
-  draft: "bg-cream-200 text-ink-700",
-  active: "bg-teal-100 text-teal-800",
-  archived: "bg-yellow-300 text-yellow-700",
+  current: "bg-teal-400 text-teal-800",
+  active: "bg-teal-400 text-teal-800",
+  draft: "bg-cream-300 text-ink-900",
+  watching: "bg-yellow-300 text-ink-900",
+  archived: "bg-yellow-300 text-ink-900",
+};
+
+const statusLabels: Record<string, string> = {
+  current: "Current",
+  active: "Current",
+  draft: "Draft",
+  watching: "Watching prices",
+  archived: "Archived",
 };
 
 export function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyles[status] ?? "bg-cream-200 text-ink-700"}`}
+      className={`inline-block text-[10px] font-medium px-2.5 py-1 rounded-full tracking-[0.12em] uppercase ${statusStyles[status] ?? "bg-cream-300 text-ink-900"}`}
+      style={{
+        fontFamily: "'Geist Mono', ui-monospace, monospace",
+        fontWeight: 500,
+        letterSpacing: "0.12em",
+      }}
     >
-      {status}
+      {statusLabels[status] ?? status}
     </span>
   );
 }

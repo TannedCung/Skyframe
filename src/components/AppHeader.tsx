@@ -37,7 +37,7 @@ export function AppHeader({ crumbs = [] }: AppHeaderProps) {
         WebkitBackdropFilter: "saturate(180%) blur(12px)",
       }}
     >
-      <div className="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
+      <div className="max-w-5xl mx-auto px-7 py-3 flex items-center gap-4">
         <button
           onClick={() => router.push("/dashboard")}
           className="shrink-0 flex items-center gap-2 hover:opacity-80 transition-opacity"

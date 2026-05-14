@@ -331,48 +331,67 @@ export function TripChatUI({
 
   const renderedMessages = useMemo(
     () =>
-      messages.map((msg, i) => (
-        <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-          <div
-            className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-              msg.role === "user"
-                ? "bg-coral-500 text-ink-900 whitespace-pre-wrap"
-                : "bg-white border border-line text-ink-800"
-            }`}
-          >
-            {msg.content ? (
-              msg.role === "model" ? (
-                renderMarkdown(msg.content)
-              ) : (
-                msg.content
-              )
-            ) : msg.streaming ? (
-              <span className="inline-flex gap-1 text-ink-400">
-                <span className="animate-bounce" style={{ animationDelay: "0ms" }}>
-                  •
+      messages.map((msg, i) => {
+        const isUser = msg.role === "user";
+        return (
+          <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+            <div
+              className="max-w-[82%] px-4 py-3 rounded-[18px] text-sm leading-relaxed"
+              style={{
+                background: isUser
+                  ? "var(--color-coral-500, #F48F68)"
+                  : "var(--color-cream-50, #FFFAEC)",
+                border: isUser ? "none" : "1px solid var(--color-line, #EFE4C8)",
+                color: "var(--color-ink-900, #2A1E15)",
+                fontFamily: "'Geist', sans-serif",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {msg.content ? (
+                msg.role === "model" ? (
+                  renderMarkdown(msg.content)
+                ) : (
+                  msg.content
+                )
+              ) : msg.streaming ? (
+                <span
+                  className="inline-flex gap-1"
+                  style={{ color: "var(--color-ink-400, #B6A593)" }}
+                >
+                  <span style={{ animation: "sfDot 1.2s infinite", animationDelay: "0ms" }}>•</span>
+                  <span style={{ animation: "sfDot 1.2s infinite", animationDelay: "200ms" }}>
+                    •
+                  </span>
+                  <span style={{ animation: "sfDot 1.2s infinite", animationDelay: "400ms" }}>
+                    •
+                  </span>
                 </span>
-                <span className="animate-bounce" style={{ animationDelay: "150ms" }}>
-                  •
-                </span>
-                <span className="animate-bounce" style={{ animationDelay: "300ms" }}>
-                  •
-                </span>
-              </span>
-            ) : null}
+              ) : null}
+            </div>
           </div>
-        </div>
-      )),
+        );
+      }),
     [messages],
   );
 
   const chatPanel = (
-    <div data-testid="chat-panel" className="flex flex-col h-full bg-cream-100">
-      <div className="flex-1 overflow-y-auto py-4 space-y-4 px-4 sm:px-6">
+    <div
+      data-testid="chat-panel"
+      className="flex flex-col h-full"
+      style={{ background: "var(--color-cream-100, #FFF6DE)" }}
+    >
+      <div className="flex-1 overflow-y-auto space-y-3 px-6" style={{ padding: "20px 24px" }}>
         {renderedMessages}
         <div ref={bottomRef} />
       </div>
-      <div className="border-t border-line bg-white px-4 sm:px-6 pt-3 pb-4">
-        <div className="flex gap-3 items-end max-w-3xl mx-auto">
+      <div
+        className="border-t px-6 pt-3.5 pb-4"
+        style={{
+          background: "var(--color-cream-50, #FFFAEC)",
+          borderColor: "var(--color-line, #EFE4C8)",
+        }}
+      >
+        <div className="flex gap-2.5 items-end max-w-3xl mx-auto">
           <textarea
             ref={textareaRef}
             data-testid="chat-input"
@@ -392,7 +411,11 @@ export function TripChatUI({
             onClick={() => void sendMessage()}
             disabled={loading || !input.trim()}
             data-testid="chat-send"
-            className="bg-coral-500 text-ink-900 px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-coral-600 transition-colors disabled:opacity-40 shrink-0"
+            className="px-4.5 py-2.5 rounded-xl font-semibold text-sm transition-colors disabled:opacity-40 shrink-0"
+            style={{
+              background: "var(--color-coral-500, #F48F68)",
+              color: "var(--color-ink-900, #2A1E15)",
+            }}
           >
             Send
           </button>
