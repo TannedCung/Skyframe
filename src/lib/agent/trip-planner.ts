@@ -90,7 +90,7 @@ Section rules:
   - "Feb 10 to Feb 20" with no year → pick the SOONEST future occurrence of that window. If Feb has already passed this year, that's Feb of next year.
   - When in any doubt, confirm the year with the user before calling \`save_trip_info\`.
 - Once all three MUST fields are set, call \`search_flights\` automatically and add a Flights section to the plan.
-- When the user confirms they want to proceed with a flight (e.g. "lock it", "looks good", "book this one"), call \`lock_flights\` to lock the best fare and write it into the plan. This replaces the generic \`search_flights\` output with a confirmed, locked Flights section.
+- When the user confirms they want to proceed with a flight (e.g. "lock it", "looks good", "book this one"), call \`lock_flights\` to lock the best fare and auto-generate the full day-by-day itinerary. This replaces the generic \`search_flights\` output with a confirmed, locked Flights section and builds the complete Day-by-Day plan in one shot.
 - Call \`finalize_trip\` ONLY when the user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good"). Do NOT call finalize_trip on a trip that is already \`active\` — it has been finalized before and the user is back to refine.
 - Keep chat responses concise — 1-3 sentences per turn. The plan document is where detail lives.
 
@@ -98,9 +98,9 @@ Section rules:
 If the **Current trip state** below shows status \`active\` or an existing plan, the user is RETURNING to refine. Do not re-introduce yourself or re-ask the basics — the plan already captures them. Instead, acknowledge what they want to change and act on it (update the plan, re-search flights, expand the day-by-day, etc).
 
 ## Day-by-day itinerary
-Once flights are confirmed and the user signals they're ready (e.g. "let's build the days", "what should we do each day", "plan it out", "looks good"), call \`generate_detailed_plan\` — a dedicated tool that produces and persists a full Day-by-Day section in the plan document. After it returns, give the user a 1-sentence acknowledgement and let them ask for tweaks.
+Once flights are confirmed and the user signals they're ready (e.g. "let's build the days", "what should we do each day", "plan it out", "looks good"), call \`lock_flights\` — it will search live fares, lock the best flight, and auto-generate the full Day-by-Day section in the plan document. After it returns, give the user a 1-sentence acknowledgement and let them ask for tweaks.
 
-Do NOT hand-write the Day-by-Day yourself via \`draft_plan\` — use the dedicated tool. It is heavier, only call it ONCE per "ready" signal. If the user asks for changes after, edit the relevant days via \`draft_plan\` rather than regenerating from scratch.`;
+Do NOT hand-write the Day-by-Day yourself via \`draft_plan\` — use the \`lock_flights\` tool (which calls the heavy generation step internally) or the \`generate_detailed_plan\` tool for fine-tuning after the initial plan exists.`;
 
 function buildInstruction(state: { status: string; hasPlan: boolean }): string {
   const planLine = state.hasPlan ? "yes — user is refining" : "no — fresh conversation";
@@ -213,7 +213,7 @@ function buildTools(tripId: string) {
   const lockFlights = new FunctionTool({
     name: "lock_flights",
     description:
-      "Lock the best flight option and add it to the plan. Call when the user says 'lock', 'book it', 'looks good' after seeing flight options, or explicitly asks to lock the flight. Searches live fares, picks the cheapest option, and writes a Flights section into the plan.",
+      "Lock the best flight option and generate the full day-by-day itinerary. Call when the user says 'lock', 'book it', 'looks good' after seeing flight options, or explicitly asks to lock the flight. Searches live fares, picks the cheapest option, writes a confirmed Flights section into the plan, then auto-generates the complete Day-by-Day itinerary.",
     parameters: {
       type: "object",
       properties: {
@@ -271,8 +271,24 @@ function buildTools(tripId: string) {
 
         // Read existing plan, replace Flights section
         const existingPlan = await getTripDraftPlan(tripId);
-        const updatedPlan = replaceFlightsSection(existingPlan, flightsMd);
-        await updateTripDraftPlan(tripId, updatedPlan);
+        const planWithFlights = replaceFlightsSection(existingPlan, flightsMd);
+        await updateTripDraftPlan(tripId, planWithFlights);
+
+        // Automatically generate the full day-by-day itinerary
+        let finalPlan = planWithFlights;
+        try {
+          const detailed = await generateDetailedPlan(tripId);
+          finalPlan = detailed.markdown;
+          logger.info(
+            { tripId, days: detailed.daysGenerated },
+            "lock_flights: detailed plan generated",
+          );
+        } catch (err) {
+          logger.warn(
+            { err, tripId },
+            "lock_flights: detailed plan generation failed — keeping flights-only plan",
+          );
+        }
 
         logger.info(
           { tripId, flightNumber: outbound.flightNumber, price: best.price },
@@ -280,7 +296,7 @@ function buildTools(tripId: string) {
         );
         return {
           success: true,
-          markdown: updatedPlan,
+          markdown: finalPlan,
           flight: {
             airline: outbound.airline,
             flightNumber: outbound.flightNumber,
