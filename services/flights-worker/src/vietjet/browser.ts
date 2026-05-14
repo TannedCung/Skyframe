@@ -73,15 +73,17 @@ async function doSearch(
 
     const capturedFlightJson: unknown[] = [];
     context.on("response", async (res) => {
+      const url = res.url();
       if (
-        res.url().includes("vietjet") &&
-        res.url().includes("api") &&
+        url.includes("vietjet") &&
+        url.includes("api") &&
+        url.includes("flight") &&
         res.status() === 200
       ) {
         try {
           const body = await res.json();
           capturedFlightJson.push(body);
-          logger.info({ url: res.url().split("?")[0] }, "Captured VietJet API response");
+          logger.info({ url: url.split("?")[0] }, "Captured VietJet API response");
         } catch { /* ignore */ }
       }
     });
@@ -116,6 +118,16 @@ async function doSearch(
     logger.info({ departDate }, "Setting departure date");
     stepStart = Date.now();
     await dismissPromo(page);
+
+    // Explicitly click the date display field to open the calendar
+    // The "Ngày đi" (departure date) field is a <p> element that opens a date picker
+    const dateField = page.locator("p.jss177, p[class*='MuiTypography'], [class*='date-display']").first();
+    if (await dateField.count() > 0) {
+      await dateField.click({ force: true });
+      await page.waitForTimeout(1000);
+      logger.info("Date field clicked, waiting for calendar to open");
+    }
+
     await setOnewayAndDate(page, year!, month!, day!);
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
