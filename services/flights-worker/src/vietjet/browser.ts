@@ -196,46 +196,17 @@ async function selectAirportsViaJS(
   origin: string,
   destination: string,
 ): Promise<void> {
-  // First, dump all inputs on the page to find the right ones
-  const inputs = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll("input")).map((el) => ({
-      tag: el.tagName,
-      type: el.getAttribute("type") ?? "",
-      placeholder: el.getAttribute("placeholder") ?? "",
-      name: el.getAttribute("name") ?? "",
-      id: el.getAttribute("id") ?? "",
-      class: el.getAttribute("class") ?? "",
-      value: (el as HTMLInputElement).value ?? "",
-      visible: el.offsetParent !== null || (el.getBoundingClientRect().height > 0 && el.getBoundingClientRect().width > 0),
-    }));
-  });
-  logger.info({ inputs }, "All inputs found on page");
-
-  // Try to find departure input — first by placeholder, then by position/class
-  let depInput = page.locator("input[placeholder='Điểm khởi hành']").first();
-  if (await depInput.count() === 0) {
-    // Fallback: try partial match on placeholder
-    depInput = page.locator("input[placeholder*='khởi hành'], input[placeholder*='Departure'], input[placeholder*='depart']").first();
-  }
-  if (await depInput.count() === 0) {
-    // Fallback: first visible text input in a form
-    const firstVisible = await page.evaluate(() => {
-      const allInputs = Array.from(document.querySelectorAll("input[type='text'], input:not([type]), input[type='search']"));
-      for (const el of allInputs) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 50 && rect.height > 20 && rect.top < window.innerHeight * 0.5) {
-          return el;
-        }
-      }
-      return null;
-    });
-    if (firstVisible) {
-      depInput = page.locator(`css=${firstVisible}`);
-    } else {
-      throw new Error(`Departure airport input not found. Available inputs: ${JSON.stringify(inputs.map((i) => i.placeholder || i.name || i.class || i.tag))}`);
-    }
+  // Find the two text inputs — Material-UI with no placeholders.
+  // First visible text input = departure, second = arrival.
+  const textInputs = await page.locator("input[type='text']").all();
+  if (textInputs.length < 2) {
+    throw new Error(`Expected at least 2 text inputs, found ${textInputs.length}`);
   }
 
+  const depInput = textInputs[0]!;
+  const arrInput = textInputs[1]!;
+
+  // ── Departure ──
   await depInput.click({ force: true });
   await page.waitForTimeout(600);
   await dismissPromo(page);
@@ -245,30 +216,6 @@ async function selectAirportsViaJS(
   await page.waitForTimeout(500);
 
   // ── Arrival ──
-  let arrInput = page.locator("input[placeholder='Điểm đến']").first();
-  if (await arrInput.count() === 0) {
-    arrInput = page.locator("input[placeholder*='đến'], input[placeholder*='Arrival'], input[placeholder*='arrive']").first();
-  }
-  if (await arrInput.count() === 0) {
-    const secondVisible = await page.evaluate(() => {
-      const allInputs = Array.from(document.querySelectorAll("input[type='text'], input:not([type]), input[type='search']"));
-      let found = 0;
-      for (const el of allInputs) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 50 && rect.height > 20 && rect.top < window.innerHeight * 0.5) {
-          found++;
-          if (found === 2) return el;
-        }
-      }
-      return null;
-    });
-    if (secondVisible) {
-      arrInput = page.locator(`css=${secondVisible}`);
-    } else {
-      throw new Error(`Arrival airport input not found. Available inputs: ${JSON.stringify(inputs.map((i) => i.placeholder || i.name || i.class || i.tag))}`);
-    }
-  }
-
   await arrInput.click({ force: true });
   await page.waitForTimeout(600);
   await dismissPromo(page);
