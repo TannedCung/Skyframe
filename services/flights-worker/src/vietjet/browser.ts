@@ -239,13 +239,25 @@ async function clickDropdownItem(
       "div[class*='item'], div[class*='airport'], div[class*='location']"
     );
 
-    for (const el of Array.from(allItems)) {
+    // Also check autocomplete results, paper elements, and anything with 'airport' in text
+    const additionalItems = document.querySelectorAll(
+      "[class*='Autocomplete'], [class*='autocomplete'], [class*='Paper'], [class*='paper'], " +
+      "ul[role='listbox'], ul[class*='Mui'], [role='listbox'], " +
+      "span[class*='Mui'], p[class*='Mui'], a[class*='Mui']"
+    );
+    const combined = new Set([...Array.from(allItems), ...Array.from(additionalItems)]);
+
+    for (const el of Array.from(combined)) {
       const txt = (el.textContent ?? "").trim().toUpperCase();
-      const iataAttr = (el as HTMLElement).dataset?.iata?.toUpperCase();
       const rect = el.getBoundingClientRect();
+      debugTexts.push(`${(el as HTMLElement).tagName}: "${(el.textContent ?? "").trim().slice(0, 60)}" (${rect.width}x${rect.height})`);
 
-      if (rect.width === 0 || rect.height === 0) continue;
+      // Skip hidden or very small elements
+      if (rect.width < 20 || rect.height < 10) continue;
+      // Skip the input itself and its wrapper
+      if (el.tagName === "INPUT" || el.tagName === "FORM") continue;
 
+      const iataAttr = (el as HTMLElement).dataset?.iata?.toUpperCase();
       if (
         iataAttr === codeUpper ||
         txt === codeUpper ||
@@ -259,13 +271,14 @@ async function clickDropdownItem(
       }
     }
 
-    return { clicked: false, totalItems: allItems.length };
+    return { clicked: false, debugTexts, totalItems: allItems.length };
   }, iataCode);
 
   if (!result.clicked) {
+    const debugTexts = (result as any).debugTexts ?? [];
     throw new Error(
-      `No dropdown item matching "${iataCode}" found for ${label} ` +
-      `(found ${(result as any).totalItems ?? "unknown"} candidate elements)`
+      `No dropdown item matching "${iataCode}" found for ${label}. ` +
+      `Found ${(result as any).totalItems ?? "unknown"} elements: ${JSON.stringify(debugTexts.slice(0, 20))}`
     );
   }
 
