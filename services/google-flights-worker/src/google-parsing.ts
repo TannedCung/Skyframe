@@ -1,36 +1,38 @@
 /**
  * Parse Google Flights API response into structured flight data.
  *
- * Response format (reverse-engineered from live API):
+ * Response format (verified 2026-05-14):
  *   1. Strip ")]}'" prefix
  *   2. JSON.parse → data[0][2] is a string → JSON.parse again
- *   3. Flight arrays live at data[2] and data[3]
+ *   3. Flight section at data[3][0]: flat array of itineraries
+ *      Each itinerary is accessed via data[3][0][i][0] where i is flight index.
  *
- * Per-flight itinerary array indices:
- *   [0]    = airline code (e.g. "ZH")
- *   [1]    = airline name (e.g. ["Shenzhen"])
- *   [2]    = segments array (each segment has full detail)
+ * Itinerary structure (data[3][0][i][0], 25 elements):
+ *   [0]    = airline code (e.g. "VJ")
+ *   [1]    = [airline name] (e.g. ["Vietjet"])
+ *   [2]    = [segment] — single-element array containing the segment array
  *   [3]    = origin airport code
  *   [4]    = departure date [year, month, day]
  *   [5]    = departure time [hour, minute]
  *   [6]    = destination airport code
  *   [7]    = arrival date [year, month, day]
+ *   [8]    = arrival time [hour, minute]
  *   [9]    = total duration in minutes
+ *   [12]   = isDayFlight boolean
+ *   [22]   = price info array (prices at [7], [8])
  *
- * Per-segment array (inside itinerary[2]):
- *   [3]    = departure airport code
- *   [6]    = arrival airport code
+ * Segment structure (itinerary[2][0], 33 elements):
+ *   [3]    = origin airport code
+ *   [5]    = destination airport name
+ *   [6]    = destination airport code
  *   [8]    = departure time [hour, minute]
- *   [11]   = segment duration in minutes
- *   [17]   = aircraft type (e.g. "Airbus A320")
+ *   [10]   = arrival time [hour, minute]
+ *   [11]   = duration in minutes
+ *   [17]   = aircraft type
  *   [20]   = departure date [year, month, day]
  *   [21]   = arrival date [year, month, day]
- *   [22]   = [airline code, flight number, null, airline name]
- *
- * Price block (itinerary[1] from outer flight array):
- *   [0]    = null
- *   [1]    = [null, price_in_minor_units]
- *   [2]    = booking token (base64)
+ *   [22]   = [airline code, airline name, url, ...]
+ *   [31]   = price in minor units (VND)
  */
 
 export interface ParsedGoogleFlight {
@@ -39,8 +41,8 @@ export interface ParsedGoogleFlight {
   airlineName: string;
   departureAirport: string;
   arrivalAirport: string;
-  departureTime: string; // ISO local datetime
-  arrivalTime: string; // ISO local datetime
+  departureTime: string;
+  arrivalTime: string;
   durationMinutes: number;
   price: number;
   currency: string;
@@ -61,9 +63,7 @@ export interface GoogleFlightSegment {
   durationMinutes: number;
 }
 
-/**
- * Strip the anti-XSSI prefix and double-parse the response.
- */
+/** Strip the anti-XSSI prefix and double-parse. */
 function parseResponseText(text: string): unknown[][] {
   const cleaned = text.startsWith(")]}'") ? text.slice(4) : text;
   const outer = JSON.parse(cleaned);
@@ -76,65 +76,93 @@ function parseResponseText(text: string): unknown[][] {
   return data;
 }
 
-/**
- * Extract all flight arrays from the parsed response.
- */
-function extractFlightArrays(data: unknown[]): unknown[][] {
-  const flights: unknown[][] = [];
-  for (const idx of [2, 3]) {
-    const bucket = data[idx];
-    if (Array.isArray(bucket) && Array.isArray(bucket[0])) {
-      for (const item of bucket[0]) {
-        if (Array.isArray(item)) {
-          flights.push(item);
-        }
-      }
-    }
-  }
-  return flights;
+/** Check if value looks like an airport code. */
+function isAirportCode(v: unknown): boolean {
+  return typeof v === "string" && /^[A-Z]{3}$/.test(v);
+}
+
+/** Check if value looks like a date array [year, month, day]. */
+function isDateArray(v: unknown): boolean {
+  if (!Array.isArray(v) || v.length !== 3) return false;
+  return (
+    typeof v[0] === "number" && v[0] > 2000 &&
+    typeof v[1] === "number" && v[1] >= 1 && v[1] <= 12 &&
+    typeof v[2] === "number" && v[2] >= 1 && v[2] <= 31
+  );
 }
 
 /**
- * Parse a single segment array into structured data.
+ * Heuristic: does this array look like a flight itinerary?
+ * Checks for airport codes at indices 3 and 6, dates at 4 and 7.
  */
+function looksLikeItinerary(arr: unknown[]): boolean {
+  if (!Array.isArray(arr) || arr.length < 10) return false;
+  return isAirportCode(arr[3]) && isAirportCode(arr[6]) && isDateArray(arr[4]) && isDateArray(arr[7]);
+}
+
+/**
+ * Extract all flight itineraries from parsed data.
+ *
+ * Primary path: data[3][0] = flat array of flights
+ *   Each entry may be [itinerary, ...] → itinerary at entry[0]
+ *   Or entry = itinerary directly
+ */
+function extractItineraries(data: unknown[]): unknown[][] {
+  const results: unknown[][] = [];
+
+  for (const section of data) {
+    if (!Array.isArray(section)) continue;
+    const flights = section[0];
+    if (!Array.isArray(flights)) continue;
+
+    for (const entry of flights) {
+      if (!Array.isArray(entry)) continue;
+      // entry[0] = itinerary (most common)
+      if (looksLikeItinerary(entry[0] as unknown[])) {
+        results.push(entry[0] as unknown[]);
+      }
+      // entry = itinerary directly
+      else if (looksLikeItinerary(entry)) {
+        results.push(entry);
+      }
+    }
+  }
+  return results;
+}
+
+/** Parse a segment array into structured data. */
 function parseSegment(seg: unknown[]): GoogleFlightSegment | null {
   if (!Array.isArray(seg) || seg.length < 25) return null;
 
   const from = typeof seg[3] === "string" ? seg[3] : "";
   const to = typeof seg[6] === "string" ? seg[6] : "";
-  const depTime = Array.isArray(seg[8]) ? seg[8] : null;
-  const depDate = Array.isArray(seg[20]) ? seg[20] : null;
-  const airlineInfo = Array.isArray(seg[22]) ? seg[22] : null;
-  const duration = typeof seg[11] === "number" ? seg[11] : 0;
-  const aircraft = typeof seg[17] === "string" ? seg[17] : "";
-
   if (!from || !to) return null;
 
-  const depTimeParts = Array.isArray(depTime) ? depTime : [0, 0];
-  const depDateParts = Array.isArray(depDate) ? depDate : [0, 1, 1];
+  const depTime = Array.isArray(seg[8]) ? seg[8] : [0, 0];
+  const arrTime = Array.isArray(seg[10]) ? seg[10] : [0, 0];
+  const depDate = Array.isArray(seg[20]) ? seg[20] : null;
+  const arrDate = Array.isArray(seg[21]) ? seg[21] : null;
+  const duration = typeof seg[11] === "number" ? seg[11] : 0;
+  const aircraft = typeof seg[17] === "string" ? seg[17] : "";
+  const airlineInfo = Array.isArray(seg[22]) ? seg[22] : null;
 
-  // Approximate arrival time: departure + duration
-  const depDateStr = `${depDateParts[0]}-${String(depDateParts[1]).padStart(2, "0")}-${String(depDateParts[2]).padStart(2, "0")}`;
-  const depTimeStr = `${String(depTimeParts[0]).padStart(2, "0")}:${String(depTimeParts[1]).padStart(2, "0")}`;
+  const depDateStr = depDate
+    ? `${depDate[0]}-${String(depDate[1]).padStart(2, "0")}-${String(depDate[2]).padStart(2, "0")}`
+    : "";
+  const depTimeStr = `${String(depTime[0]).padStart(2, "0")}:${String(depTime[1]).padStart(2, "0")}`;
+  const arrTimeStr = `${String(arrTime[0]).padStart(2, "0")}:${String(arrTime[1]).padStart(2, "0")}`;
+  const arrDateStr = arrDate
+    ? `${arrDate[0]}-${String(arrDate[1]).padStart(2, "0")}-${String(arrDate[2]).padStart(2, "0")}`
+    : depDateStr;
 
-  // Calculate arrival time
-  const depHour = depTimeParts[0] ?? 0;
-  const depMin = depTimeParts[1] ?? 0;
-  const totalMin = depHour * 60 + depMin + duration;
-  const arrHour = Math.floor(totalMin / 60) % 24;
-  const arrMin = totalMin % 60;
-  const arrTimeStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
-
-  const airline =
-    Array.isArray(airlineInfo) && typeof airlineInfo[0] === "string" ? airlineInfo[0] : "";
-  const flightNumber =
-    Array.isArray(airlineInfo) && typeof airlineInfo[1] === "string" ? airlineInfo[1] : "";
+  const airline = Array.isArray(airlineInfo) && typeof airlineInfo[0] === "string" ? airlineInfo[0] : "";
+  const flightNumber = Array.isArray(airlineInfo) && typeof airlineInfo[1] === "string" ? airlineInfo[1] : "";
 
   return {
     from,
     to,
-    departureTime: `${depDateStr}T${depTimeStr}`,
-    arrivalTime: `${depDateStr}T${arrTimeStr}`,
+    departureTime: depDateStr ? `${depDateStr}T${depTimeStr}` : depTimeStr,
+    arrivalTime: `${arrDateStr}T${arrTimeStr}`,
     airline,
     flightNumber,
     aircraft,
@@ -142,81 +170,78 @@ function parseSegment(seg: unknown[]): GoogleFlightSegment | null {
   };
 }
 
-/**
- * Parse a single flight item from the response.
- */
-function parseFlight(item: unknown[]): ParsedGoogleFlight | null {
-  // item[0] = itinerary array, item[1] = price block
-  const itinerary = Array.isArray(item[0]) ? item[0] : null;
-  const priceBlock = Array.isArray(item[1]) ? item[1] : null;
-
-  if (!itinerary || !priceBlock) return null;
-
-  // Parse price
-  const priceArr = Array.isArray(priceBlock[1]) ? priceBlock[1] : null;
-  const price = Array.isArray(priceArr) && typeof priceArr[1] === "number" ? priceArr[1] : null;
-  const bookingToken = typeof priceBlock[2] === "string" ? priceBlock[2] : "";
-
-  if (price === null || price <= 0) return null; // skip flights without price
-
-  // Parse segments
-  const segsRaw = Array.isArray(itinerary[2]) ? itinerary[2] : null;
-  const segments: GoogleFlightSegment[] = [];
-
-  if (segsRaw) {
-    for (const seg of segsRaw) {
-      if (Array.isArray(seg)) {
-        const parsed = parseSegment(seg);
-        if (parsed) segments.push(parsed);
+/** Extract price from itinerary's price info block at [22]. */
+function extractPrice(itinerary: unknown[]): number | null {
+  // Primary: price at itinerary[22][7] or [22][8]
+  if (Array.isArray(itinerary[22])) {
+    const priceInfo = itinerary[22] as unknown[];
+    for (const idx of [7, 8]) {
+      if (typeof priceInfo[idx] === "number" && (priceInfo[idx] as number) > 0) {
+        return priceInfo[idx] as number;
       }
     }
   }
+  // Fallback: price in segment at [31]
+  if (Array.isArray(itinerary[2]) && itinerary[2].length > 0) {
+    const seg = itinerary[2][0];
+    if (Array.isArray(seg) && typeof seg[31] === "number" && seg[31] > 0) {
+      return seg[31] as number;
+    }
+  }
+  return null;
+}
 
+/** Extract booking token from itinerary[17]. */
+function extractToken(itinerary: unknown[]): string {
+  return typeof itinerary[17] === "string" ? (itinerary[17] as string) : "";
+}
+
+/** Parse a single itinerary into a flight option. */
+function parseItinerary(itinerary: unknown[]): ParsedGoogleFlight | null {
+  const price = extractPrice(itinerary);
+  if (price === null) return null;
+
+  const bookingToken = extractToken(itinerary);
+
+  // Parse segments
+  const segsRaw = Array.isArray(itinerary[2]) ? itinerary[2] : [];
+  const segments: GoogleFlightSegment[] = [];
+  for (const segEntry of segsRaw as unknown[]) {
+    if (Array.isArray(segEntry)) {
+      const parsed = parseSegment(segEntry);
+      if (parsed) segments.push(parsed);
+    }
+  }
   if (segments.length === 0) return null;
 
-  // Build outbound flight leg from first segment
   const firstSeg = segments[0]!;
   const lastSeg = segments[segments.length - 1]!;
 
-  const airline = firstSeg.airline || (typeof itinerary[0] === "string" ? itinerary[0] : "");
-  const airlineName =
-    Array.isArray(itinerary[1]) && typeof itinerary[1][0] === "string" ? itinerary[1][0] : "";
+  const airlineCode = typeof itinerary[0] === "string" ? itinerary[0] : "";
+  const airlineNameArr = Array.isArray(itinerary[1]) ? itinerary[1] : null;
+  const airlineName = airlineNameArr && typeof airlineNameArr[0] === "string" ? (airlineNameArr[0] as string) : "";
+  const airline = firstSeg.airline || airlineCode;
+  const durationMinutes = typeof itinerary[9] === "number" ? itinerary[9] as number : segments.reduce((s, seg) => s + seg.durationMinutes, 0);
+  const isDayFlight = typeof itinerary[12] === "boolean" ? itinerary[12] as boolean : (firstSeg.departureTime.slice(11, 13) >= "06" && firstSeg.departureTime.slice(11, 13) < "20");
 
-  const durationMinutes = typeof itinerary[9] === "number" ? itinerary[9] : lastSeg.durationMinutes;
-
-  // Departure time from itinerary-level fields
-  const depDate = Array.isArray(itinerary[4]) ? itinerary[4] : null;
-  const depTimeArr = Array.isArray(itinerary[5]) ? itinerary[5] : null;
-
+  // Build departure/arrival from itinerary-level fields
   let departureTime = firstSeg.departureTime;
-  let arrivalTime = lastSeg.arrivalTime;
-
-  if (depDate && depTimeArr) {
-    const d = `${depDate[0]}-${String(depDate[1]).padStart(2, "0")}-${String(depDate[2]).padStart(2, "0")}`;
-    const t = `${String(depTimeArr[0]).padStart(2, "0")}:${String(depTimeArr[1]).padStart(2, "0")}`;
+  if (isDateArray(itinerary[4]) && Array.isArray(itinerary[5])) {
+    const d = `${itinerary[4][0]}-${String(itinerary[4][1]).padStart(2, "0")}-${String(itinerary[4][2]).padStart(2, "0")}`;
+    const t = `${String(itinerary[5][0]).padStart(2, "0")}:${String(itinerary[5][1]).padStart(2, "0")}`;
     departureTime = `${d}T${t}`;
   }
 
-  const arrDate = Array.isArray(itinerary[7]) ? itinerary[7] : null;
-  if (arrDate) {
-    // Calculate arrival from departure + total duration
-    const depParts = departureTime.split("T");
-    const depH = parseInt(depParts[1]?.slice(0, 2) ?? "0", 10);
-    const depM = parseInt(depParts[1]?.slice(3, 5) ?? "0", 10);
-    const totalMin = depH * 60 + depM + durationMinutes;
-    const arrH = Math.floor(totalMin / 60) % 24;
-    const arrM = totalMin % 60;
-    const a = `${arrDate[0]}-${String(arrDate[1]).padStart(2, "0")}-${String(arrDate[2]).padStart(2, "0")}`;
-    arrivalTime = `${a}T${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`;
+  let arrivalTime = lastSeg.arrivalTime;
+  if (isDateArray(itinerary[7]) && Array.isArray(itinerary[8])) {
+    const a = `${itinerary[7][0]}-${String(itinerary[7][1]).padStart(2, "0")}-${String(itinerary[7][2]).padStart(2, "0")}`;
+    const t = `${String(itinerary[8][0]).padStart(2, "0")}:${String(itinerary[8][1]).padStart(2, "0")}`;
+    arrivalTime = `${a}T${t}`;
   }
-
-  const depHour = parseInt(departureTime.slice(11, 13), 10);
-  const isDayFlight = depHour >= 6 && depHour < 20;
 
   return {
     airline,
-    flightNumber:
-      firstSeg.flightNumber || `${airline}${firstSeg.flightNumber ? "" : durationMinutes}`,
+    flightNumber: firstSeg.flightNumber || `${airline}`,
     airlineName,
     departureAirport: firstSeg.from,
     arrivalAirport: lastSeg.to,
@@ -224,7 +249,7 @@ function parseFlight(item: unknown[]): ParsedGoogleFlight | null {
     arrivalTime,
     durationMinutes,
     price,
-    currency: "VND", // Google returns VND for Vietnam IP; can be overridden via curr= parameter
+    currency: "VND",
     bookingToken,
     stops: segments.length - 1,
     isDayFlight,
@@ -232,29 +257,21 @@ function parseFlight(item: unknown[]): ParsedGoogleFlight | null {
   };
 }
 
-/**
- * Full response parsing: raw text → array of parsed flights.
- */
+/** Full response parsing: raw text → array of parsed flights. */
 export function parseGoogleFlightsResponse(text: string): ParsedGoogleFlight[] {
   const data = parseResponseText(text);
-  const items = extractFlightArrays(data);
+  const itineraries = extractItineraries(data);
   const results: ParsedGoogleFlight[] = [];
 
-  for (const item of items) {
-    const parsed = parseFlight(item);
-    if (parsed) {
-      // Build a proper flight number if missing
-      if (!parsed.flightNumber || parsed.flightNumber === parsed.airline) {
-        parsed.flightNumber = `${parsed.airline}${parsed.segments.map((s) => s.flightNumber || "?").join("+")}`;
-      }
-      results.push(parsed);
-    }
+  for (const it of itineraries) {
+    const parsed = parseItinerary(it);
+    if (parsed) results.push(parsed);
   }
 
-  // Deduplicate by first-segment flight number + departure time
+  // Deduplicate by airline + departure time
   const seen = new Set<string>();
   return results.filter((f) => {
-    const key = `${f.segments[0]?.flightNumber ?? ""}-${f.departureTime}`;
+    const key = `${f.airline}-${f.departureTime}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
