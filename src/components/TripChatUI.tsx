@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { renderMarkdown } from "@/lib/plan/markdown";
 import { PlanPanel } from "@/components/plan/PlanPanel";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
-import type { Itinerary, SG1Option, Trip } from "@/types";
+import type { Trip } from "@/types";
 
 interface Message {
   role: "user" | "model";
@@ -22,12 +22,6 @@ interface TripChatUIProps {
   initialPlanMarkdown?: string | null;
   /** Trip details for the plan header. */
   trip?: Trip | null;
-  /** SG1 options shown in the Overview tab. */
-  sg1Options?: SG1Option[];
-  /** ID of the currently selected SG1 option, if any. */
-  selectedSg1Id?: string | null;
-  /** Itinerary versions shown in the Versions tab. */
-  versions?: Itinerary[];
   /** Navigate away when the agent finalises (used on /trip/new). */
   redirectOnFinalize?: boolean;
 }
@@ -44,9 +38,6 @@ export function TripChatUI({
   initialMessages,
   initialPlanMarkdown,
   trip = null,
-  sg1Options = [],
-  selectedSg1Id = null,
-  versions = [],
   redirectOnFinalize = false,
 }: TripChatUIProps = {}) {
   const router = useRouter();
@@ -336,7 +327,7 @@ export function TripChatUI({
     }
   }
 
-  const showPlan = !!planMarkdown || sg1Options.length > 0 || versions.length > 0;
+  const showPlan = !!planMarkdown;
 
   const renderedMessages = useMemo(
     () =>
@@ -435,9 +426,6 @@ export function TripChatUI({
               ref={planContentRef}
               markdown={planMarkdown}
               trip={trip}
-              sg1Options={sg1Options}
-              selectedSg1Id={selectedSg1Id}
-              versions={versions}
               onRefine={prefillInput}
               onPatch={(msg) => void sendPatch(msg)}
               quoteHint={{ active: quoteHint, text: "Ctrl+L to quote" }}

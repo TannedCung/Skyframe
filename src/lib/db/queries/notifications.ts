@@ -17,20 +17,6 @@ export async function createNotification(data: {
   return rowToNotification(row);
 }
 
-export async function getUnsentNotifications(): Promise<Notification[]> {
-  const rows = await sql`
-    SELECT * FROM notifications
-    WHERE sent_at IS NULL
-    ORDER BY created_at ASC
-    LIMIT 100
-  `;
-  return rows.map(rowToNotification);
-}
-
-export async function markNotificationSent(id: string): Promise<void> {
-  await sql`UPDATE notifications SET sent_at = NOW() WHERE id = ${id}`;
-}
-
 export async function upsertWatcher(data: {
   tripId: string;
   email: string;

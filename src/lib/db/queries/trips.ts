@@ -64,26 +64,6 @@ export async function getTripDraftPlan(id: string): Promise<string | null> {
   return (rows[0]?.["draft_plan"] as string | null) ?? null;
 }
 
-export async function updateLastFlightRefresh(id: string): Promise<void> {
-  await sql`UPDATE trips SET last_flight_refresh_at = NOW() WHERE id = ${id}`;
-}
-
-export async function getActiveTripsForRefresh(): Promise<Trip[]> {
-  const rows = await sql`
-    SELECT t.* FROM trips t
-    WHERE t.status = 'active'
-      AND EXISTS (
-        SELECT 1 FROM itineraries i
-        WHERE i.trip_id = t.id AND i.status = 'current'
-      )
-      AND (
-        t.last_flight_refresh_at IS NULL
-        OR t.last_flight_refresh_at < NOW() - INTERVAL '55 minutes'
-      )
-  `;
-  return rows.map(rowToTrip);
-}
-
 export async function deleteTrip(id: string, userId: string): Promise<void> {
   await sql`DELETE FROM trips WHERE id = ${id} AND user_id = ${userId}`;
 }

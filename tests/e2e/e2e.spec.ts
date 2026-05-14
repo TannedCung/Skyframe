@@ -75,8 +75,6 @@ test.describe("API security", () => {
     ["GET", "/api/trips/some-id"],
     ["PATCH", "/api/trips/some-id"],
     ["DELETE", "/api/trips/some-id"],
-    ["POST", "/api/trips/some-id/generate-sg1"],
-    ["POST", "/api/trips/some-id/generate-sg2"],
     ["POST", "/api/trips/some-id/invite"],
     ["GET", "/api/settings"],
     ["PATCH", "/api/settings"],
@@ -86,18 +84,6 @@ test.describe("API security", () => {
       expect(res.status()).toBe(401);
     });
   }
-
-  test("cron without secret → 401 or 200 (depends on env)", async ({ request }) => {
-    const res = await request.get("/api/cron/refresh-itineraries");
-    expect([200, 401]).toContain(res.status());
-  });
-
-  test("cron with wrong bearer → 401 or 200 (depends on env)", async ({ request }) => {
-    const res = await request.get("/api/cron/refresh-itineraries", {
-      headers: { authorization: "Bearer wrong-secret" },
-    });
-    expect([200, 401]).toContain(res.status());
-  });
 });
 
 // ─── Dashboard (authenticated) ────────────────────────────────────────────

@@ -1,9 +1,8 @@
 export type TripStatus = "draft" | "active" | "archived";
 export type TripType = "round_trip" | "one_way";
 export type FlightTimePreference = "day" | "night" | "any";
-export type ItineraryStatus = "current" | "superseded";
 export type WatcherRole = "owner" | "viewer";
-export type NotificationType = "price_change" | "new_itinerary_version" | "invite";
+export type NotificationType = "invite";
 export type GdsProvider = "auto" | "kiwi" | "vietjet" | "airlabs" | "google";
 
 export interface User {
@@ -42,55 +41,6 @@ export interface Trip {
   lastFlightRefreshAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface TripRawOption {
-  id: string;
-  tripId: string;
-  llmRawPlanJson: SG1Option;
-  selected: boolean;
-  createdAt: Date;
-}
-
-export interface SG1Option {
-  id: string;
-  entryCity: string;
-  exitCity: string;
-  approximateDates: { start: string; end: string };
-  theme: string;
-  airports: { entry: string; exit: string };
-  description?: string;
-}
-
-export interface Itinerary {
-  id: string;
-  tripId: string;
-  version: number;
-  parentVersionId: string | null;
-  status: ItineraryStatus;
-  itineraryJson: DayItinerary[];
-  snapshotFlightDataJson: FlightSnapshot;
-  cheapestTotalPrice: number;
-  currency: string;
-  createdAt: Date;
-}
-
-export interface DayItinerary {
-  day: number;
-  date: string;
-  location: string;
-  activities: string[];
-  notes?: string;
-}
-
-export interface FlightSnapshot {
-  outbound: FlightLeg;
-  inbound?: FlightLeg;
-  totalPrice: number;
-  currency: string;
-  bookingLink: string;
-  provider: string;
-  priceAvailable: boolean;
 }
 
 export interface FlightLeg {

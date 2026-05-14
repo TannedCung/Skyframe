@@ -9,7 +9,6 @@ import {
   getWatcherByInviteToken,
   acceptInvite,
 } from "@/lib/db/queries/notifications";
-import { getCurrentItinerary } from "@/lib/db/queries/itineraries";
 import { sendEmail } from "@/lib/email/ses";
 import { inviteEmail } from "@/lib/email/templates/invite";
 import { apiError, Errors } from "@/lib/errors";
@@ -32,7 +31,6 @@ export async function POST(
     const body = (await request.json()) as { emails?: string[] };
     if (!body.emails?.length) return apiError(Errors.badRequest("emails array is required"));
 
-    const currentItinerary = await getCurrentItinerary(id);
     const inviterName = session.user.name ?? session.user.email;
 
     const results = await Promise.allSettled(
@@ -54,8 +52,6 @@ export async function POST(
           inviteToken: watcher.inviteToken,
           startDate: trip.startDate.toISOString().split("T")[0]!,
           endDate: trip.endDate.toISOString().split("T")[0]!,
-          price: currentItinerary?.cheapestTotalPrice ?? 0,
-          currency: currentItinerary?.currency ?? "USD",
         });
 
         await sendEmail({ to: email, ...emailContent });

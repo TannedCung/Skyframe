@@ -3,11 +3,10 @@ import type { Trip } from "@/types";
 
 interface PlanHeaderProps {
   trip: Trip | null;
-  versionLabel?: string | null;
   hint?: { active: boolean; text: string };
 }
 
-export function PlanHeader({ trip, versionLabel, hint }: PlanHeaderProps) {
+export function PlanHeader({ trip, hint }: PlanHeaderProps) {
   if (!trip) {
     return (
       <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-cream-50">
@@ -42,14 +41,7 @@ export function PlanHeader({ trip, versionLabel, hint }: PlanHeaderProps) {
         <h2 className="display-tight text-sm font-semibold text-ink-900 tracking-wide uppercase">
           Trip Plan
         </h2>
-        <div className="flex items-center gap-2">
-          {versionLabel && (
-            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-cream-200 text-ink-700">
-              {versionLabel}
-            </span>
-          )}
-          <StatusBadge status={trip.status} />
-        </div>
+        <StatusBadge status={trip.status} />
       </div>
       <div className="flex items-center gap-3 flex-wrap text-xs text-ink-700">
         <span className="font-mono uppercase tracking-wider text-ink-900">

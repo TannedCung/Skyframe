@@ -6,15 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { TripChatUI } from "@/components/TripChatUI";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
-import type { Itinerary, SG1Option, Trip } from "@/types";
+import type { Trip } from "@/types";
 
 interface TripDetailData {
   trip: Trip;
   messages: ChatMessage[];
   draftPlan: string | null;
-  sg1Options: SG1Option[];
-  selectedSg1Id: string | null;
-  history: Itinerary[];
 }
 
 function InviteBanner({
@@ -153,9 +150,6 @@ export default function TripDetailPage({ params }: { params: Promise<{ id: strin
             initialMessages={data.messages}
             initialPlanMarkdown={data.draftPlan}
             trip={data.trip}
-            sg1Options={data.sg1Options}
-            selectedSg1Id={data.selectedSg1Id}
-            versions={data.history}
           />
         </div>
       </main>

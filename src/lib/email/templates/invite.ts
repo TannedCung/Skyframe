@@ -8,8 +8,6 @@ export function inviteEmail(params: {
   inviteToken: string;
   startDate: string;
   endDate: string;
-  price: number;
-  currency: string;
 }): { subject: string; html: string; text: string } {
   const acceptUrl = `${APP_URL}/trip/${params.tripId}?invite_token=${params.inviteToken}`;
 
@@ -21,7 +19,6 @@ ${params.inviterName} has shared a Skyframe trip with you!
 Trip: ${params.tripTitle}
 Destination: ${params.destination}
 Dates: ${params.startDate} to ${params.endDate}
-Estimated price: ${params.currency} ${params.price.toFixed(2)}
 
 View the trip and get real-time price updates: ${acceptUrl}
 
@@ -37,7 +34,6 @@ Skyframe
     <h3 style="margin: 0 0 10px; color: #2A1E15;">${params.tripTitle}</h3>
     <p style="margin: 4px 0;">📍 ${params.destination}</p>
     <p style="margin: 4px 0;">📅 ${params.startDate} → ${params.endDate}</p>
-    <p style="margin: 4px 0;">💰 From ${params.currency} ${params.price.toFixed(2)}</p>
   </div>
   <a href="${acceptUrl}" style="background: #F48F68; color: #2A1E15; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">
     View Trip &amp; Watch Price Updates
