@@ -202,6 +202,9 @@ const server = http.createServer(async (req, res) => {
       await handleVietJetDebug(req, res);
       return;
     }
+
+    // Google Flights: POST /search/google
+    if (req.method === "POST" && url.pathname === "/search/google") {
       await handleGoogleSearch(req, res);
       return;
     }
