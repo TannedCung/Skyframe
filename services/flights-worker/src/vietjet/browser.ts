@@ -247,6 +247,7 @@ async function clickDropdownItem(
     );
     const combined = new Set([...Array.from(allItems), ...Array.from(additionalItems)]);
 
+    const debugTexts: string[] = [];
     for (const el of Array.from(combined)) {
       const txt = (el.textContent ?? "").trim().toUpperCase();
       const rect = el.getBoundingClientRect();
