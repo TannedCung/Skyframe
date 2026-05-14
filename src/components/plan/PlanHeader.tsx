@@ -47,10 +47,12 @@ export function PlanHeader({ trip, hint, flightsLocked = false }: PlanHeaderProp
 
   return (
     <div
-      className="border-b px-5 py-4"
+      className="border-b px-5"
       style={{
         background: "var(--color-cream-50, #FFFAEC)",
         borderColor: "var(--color-line, #EFE4C8)",
+        paddingTop: "16px",
+        paddingBottom: "12px",
       }}
     >
       <div className="flex items-center justify-between gap-3 mb-1">

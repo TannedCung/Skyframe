@@ -336,7 +336,7 @@ export function TripChatUI({
         return (
           <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
             <div
-              className="max-w-[82%] px-4 py-3 rounded-[18px] text-sm leading-relaxed"
+              className="max-w-[82%] px-4 py-3 rounded-[18px] text-sm"
               style={{
                 background: isUser
                   ? "var(--color-coral-500, #F48F68)"
@@ -345,6 +345,7 @@ export function TripChatUI({
                 color: "var(--color-ink-900, #2A1E15)",
                 fontFamily: "'Geist', sans-serif",
                 whiteSpace: "pre-wrap",
+                lineHeight: 1.5,
               }}
             >
               {msg.content ? (

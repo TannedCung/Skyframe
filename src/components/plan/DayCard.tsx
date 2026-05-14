@@ -66,10 +66,11 @@ export function DayCard({ day, onRefine, onPatch }: DayCardProps) {
             {day.number}
           </span>
           <h3
-            className="text-sm font-semibold truncate"
+            className="truncate font-semibold"
             style={{
               fontFamily: "'Bricolage Grotesque', sans-serif",
               letterSpacing: "-0.01em",
+              fontSize: "15px",
               color: "var(--color-ink-900, #2A1E15)",
             }}
           >
@@ -87,7 +88,10 @@ export function DayCard({ day, onRefine, onPatch }: DayCardProps) {
           </button>
         )}
       </header>
-      <div className="px-4 py-3 text-sm" style={{ color: "var(--color-ink-800, #4A3A2E)" }}>
+      <div
+        className="text-sm"
+        style={{ padding: "12px 16px 16px", color: "var(--color-ink-800, #4A3A2E)" }}
+      >
         {lines.length === 0 || day.body.trim() === "" ? (
           <p className="text-ink-400 italic text-xs">No details yet.</p>
         ) : (

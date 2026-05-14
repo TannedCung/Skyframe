@@ -52,7 +52,12 @@ export const PlanPanel = forwardRef<HTMLDivElement, PlanPanelProps>(function Pla
         daysCount={parsed.days.length}
         flightsLocked={flightsLocked}
       />
-      <div ref={ref} data-testid="plan-content" className="flex-1 overflow-y-auto px-5 py-[18px]">
+      <div
+        ref={ref}
+        data-testid="plan-content"
+        className="flex-1 overflow-y-auto"
+        style={{ padding: "18px 22px" }}
+      >
         {empty ? (
           <EmptyState />
         ) : (
@@ -135,6 +140,7 @@ function TabBar({
       style={{
         background: "var(--color-cream-50, #FFFAEC)",
         borderColor: "var(--color-line, #EFE4C8)",
+        gap: "4px",
       }}
     >
       {items.map((item) => {
