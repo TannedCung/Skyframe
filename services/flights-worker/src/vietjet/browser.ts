@@ -211,7 +211,23 @@ async function selectAirportsViaJS(
   await page.waitForTimeout(600);
   await dismissPromo(page);
   await depInput.pressSequentially(origin, { delay: 100 });
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(2000); // longer wait for React autocomplete
+
+  // Debug: dump all visible elements with text after typing
+  const debugAfterType = await page.evaluate(() => {
+    const all = document.querySelectorAll("*");
+    const withText: string[] = [];
+    for (const el of Array.from(all)) {
+      const rect = el.getBoundingClientRect();
+      const txt = (el.textContent ?? "").trim();
+      if (rect.width > 30 && rect.height > 15 && txt.length > 0 && txt.length < 100 && el.childElementCount === 0) {
+        withText.push(`${el.tagName}.${el.className?.toString?.().slice(0, 40)}: "${txt}" [${Math.round(rect.top)},${Math.round(rect.left)}]`);
+      }
+    }
+    return withText.slice(0, 50);
+  });
+  logger.info({ debugAfterType }, "DOM elements after typing");
+
   await clickDropdownItem(page, origin, "departure");
   await page.waitForTimeout(500);
 
