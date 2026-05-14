@@ -58,7 +58,7 @@ export class VietJetAirFlightProvider implements FlightProvider {
     destination: string,
     date: string,
   ): Promise<ServiceFlight[]> {
-    const url = `${this.serviceUrl}/search?origin=${origin}&destination=${destination}&date=${date}`;
+    const url = `${this.serviceUrl}/search/vietjet?origin=${origin}&destination=${destination}&date=${date}`;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {

@@ -12,7 +12,7 @@ interface ServiceSearchResult {
  * Google Flights provider — thin HTTP client.
  *
  * The actual scraping (Chrome TLS impersonation via `impers` + libcurl-impersonate)
- * lives in `services/google-flights-worker/` and runs on Railway/Fly.io. We can't
+ * lives in `services/flights-worker/` and runs on Railway. We can't
  * run native FFI on Vercel's Lambda runtime, so we proxy to a small always-on
  * worker that handles the scraping and serves cached results back.
  */
@@ -28,7 +28,7 @@ export class GoogleFlightsProvider implements FlightProvider {
   async searchFlights(params: FlightSearchParams): Promise<FlightOption[]> {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch(`${this.serviceUrl}/search`, {
+        const res = await fetch(`${this.serviceUrl}/search/google`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

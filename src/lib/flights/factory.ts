@@ -7,6 +7,14 @@ import type { GdsProvider } from "@/types";
 import { Errors } from "@/lib/errors";
 import logger from "@/lib/logger";
 
+/** Shared worker URL + secret for both Google and VietJet providers. */
+function getFlightsWorkerConfig(): { serviceUrl: string; serviceSecret: string } | null {
+  const url = process.env["FLIGHTS_SERVICE_URL"];
+  const secret = process.env["FLIGHTS_SERVICE_SECRET"];
+  if (!url || !secret) return null;
+  return { serviceUrl: url, serviceSecret: secret };
+}
+
 /** Tries AirLabs (primary) then Kiwi (fallback). */
 class CompositeFlightProvider implements FlightProvider {
   private readonly providers: Array<{ name: string; provider: FlightProvider }>;
@@ -46,31 +54,23 @@ export function getFlightProvider(): CompositeFlightProvider {
     chain.push({ name: "kiwi", provider: new KiwiTequilaFlightProvider(kiwiKey) });
   }
 
-  // VietJet: real prices in VND via a headless browser search service.
-  // Deploy services/vietjet-token-server/ and set both env vars to enable.
-  const vietjetServiceUrl = process.env["VIETJET_TOKEN_SERVICE_URL"];
-  const vietjetServiceSecret = process.env["VIETJET_TOKEN_SERVICE_SECRET"];
-  if (vietjetServiceUrl && vietjetServiceSecret) {
+  // VietJet + Google Flights share a single worker service on Railway.
+  // VietJet: real prices in VND via headless browser (Playwright).
+  // Google Flights: real prices via Chrome TLS impersonation (impers/FFI).
+  const worker = getFlightsWorkerConfig();
+  if (worker) {
     chain.push({
       name: "vietjet",
       provider: new VietJetAirFlightProvider({
-        serviceUrl: vietjetServiceUrl,
-        serviceSecret: vietjetServiceSecret,
+        serviceUrl: worker.serviceUrl,
+        serviceSecret: worker.serviceSecret,
       }),
     });
-  }
-
-  // Google Flights: real prices via Chrome TLS impersonation behind an external
-  // worker (services/google-flights-worker/, deployed on Railway/Fly).
-  // Placed after Kiwi/VietJet (which have booking links), before AirLabs.
-  const googleServiceUrl = process.env["GOOGLE_FLIGHTS_SERVICE_URL"];
-  const googleServiceSecret = process.env["GOOGLE_FLIGHTS_SERVICE_SECRET"];
-  if (googleServiceUrl && googleServiceSecret) {
     chain.push({
       name: "google",
       provider: new GoogleFlightsProvider({
-        serviceUrl: googleServiceUrl,
-        serviceSecret: googleServiceSecret,
+        serviceUrl: worker.serviceUrl,
+        serviceSecret: worker.serviceSecret,
       }),
     });
   }
@@ -108,11 +108,13 @@ export function getFlightProviderForUser(pref: GdsProvider): FlightProvider {
   }
 
   if (pref === "vietjet") {
-    const url = process.env["VIETJET_TOKEN_SERVICE_URL"];
-    const secret = process.env["VIETJET_TOKEN_SERVICE_SECRET"];
-    if (!url || !secret)
-      throw Errors.serviceUnavailable("VietJet token service (env vars not set)");
-    return new VietJetAirFlightProvider({ serviceUrl: url, serviceSecret: secret });
+    const worker = getFlightsWorkerConfig();
+    if (!worker)
+      throw Errors.serviceUnavailable("Flights worker (FLIGHTS_SERVICE_URL/SECRET not set)");
+    return new VietJetAirFlightProvider({
+      serviceUrl: worker.serviceUrl,
+      serviceSecret: worker.serviceSecret,
+    });
   }
 
   if (pref === "airlabs") {
@@ -122,13 +124,13 @@ export function getFlightProviderForUser(pref: GdsProvider): FlightProvider {
   }
 
   if (pref === "google") {
-    const url = process.env["GOOGLE_FLIGHTS_SERVICE_URL"];
-    const secret = process.env["GOOGLE_FLIGHTS_SERVICE_SECRET"];
-    if (!url || !secret)
-      throw Errors.serviceUnavailable(
-        "Google Flights worker (GOOGLE_FLIGHTS_SERVICE_URL/SECRET not set)",
-      );
-    return new GoogleFlightsProvider({ serviceUrl: url, serviceSecret: secret });
+    const worker = getFlightsWorkerConfig();
+    if (!worker)
+      throw Errors.serviceUnavailable("Flights worker (FLIGHTS_SERVICE_URL/SECRET not set)");
+    return new GoogleFlightsProvider({
+      serviceUrl: worker.serviceUrl,
+      serviceSecret: worker.serviceSecret,
+    });
   }
 
   return getFlightProvider();
