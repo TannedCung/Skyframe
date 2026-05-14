@@ -4,6 +4,7 @@ import {
   InMemorySessionService,
   Runner,
   LLMRegistry,
+  StreamingMode,
   createEvent,
   createEventActions,
 } from "@google/adk";
@@ -464,6 +465,7 @@ export async function* runTripPlannerAgent(
     userId,
     sessionId: tripId,
     newMessage,
+    runConfig: { streamingMode: StreamingMode.SSE },
   })) {
     if (!event.content?.parts) continue;
 
