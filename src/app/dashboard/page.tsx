@@ -136,9 +136,9 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              <div className="grid gap-4.5 md:grid-cols-2">
-                {trips.map((trip, i) => (
-                  <TripCard key={trip.id} trip={trip} featured={i === 0} />
+              <div className="grid gap-[18px] md:grid-cols-2">
+                {trips.map((trip) => (
+                  <TripCard key={trip.id} trip={trip} />
                 ))}
               </div>
 

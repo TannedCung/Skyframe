@@ -32,7 +32,7 @@ function tripImage(id: string): string {
   return TRIP_IMAGES[hash] ?? TRIP_IMAGES[0]!;
 }
 
-export function TripCard({ trip, featured }: { trip: Trip; featured?: boolean }) {
+export function TripCard({ trip }: { trip: Trip }) {
   const startDate = new Date(trip.startDate).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -52,11 +52,10 @@ export function TripCard({ trip, featured }: { trip: Trip; featured?: boolean })
         className="rounded-[18px] border border-line overflow-hidden hover:shadow-lg transition-all cursor-pointer w-full bg-cream-50"
         style={{
           boxShadow: "0 1px 2px rgba(74,50,30,.06)",
-          gridColumn: featured ? "span 2" : undefined,
         }}
       >
         {/* Image */}
-        <div className="relative" style={{ aspectRatio: featured ? "16 / 7" : "16 / 9" }}>
+        <div className="relative" style={{ aspectRatio: "16 / 9" }}>
           <img
             src={imgSrc}
             alt={destination}
@@ -83,7 +82,7 @@ export function TripCard({ trip, featured }: { trip: Trip; featured?: boolean })
             className="font-semibold truncate mb-1.5 text-ink-900"
             style={{
               fontFamily: "'Bricolage Grotesque', sans-serif",
-              fontSize: featured ? "22px" : "18px",
+              fontSize: "18px",
               letterSpacing: "-0.01em",
             }}
           >
