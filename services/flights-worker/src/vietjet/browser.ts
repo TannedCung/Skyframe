@@ -114,88 +114,13 @@ async function doSearch(
 
     logger.info({ elapsed: Date.now() - stepStart }, "Airports selected");
 
-    // ── 4. Calendar — bypass picker, set date via JS + submit ────────────────
-    logger.info({ departDate }, "Setting departure date");
+    // ── 4. Navigate to search URL directly (bypass calendar) ─────────────────
+    logger.info({ departDate }, "Navigating to search URL");
     stepStart = Date.now();
-    await dismissPromo(page);
-
-    // The calendar picker doesn't open in headless mode. Try to set the date
-    // directly in the form's internal state (Redux/store) and then submit.
-    const formattedDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dateSetResult = await page.evaluate(({ date }) => {
-      // Try multiple approaches:
-      // 1. Look for hidden inputs with date values
-      const hiddenInputs = document.querySelectorAll("input[type='hidden'][name*='date'], input[type='hidden'][name*='Date']");
-      for (const input of Array.from(hiddenInputs)) {
-        (input as HTMLInputElement).value = date;
-      }
-
-      // 2. Look for date display elements and update their data attributes
-      const dateDisplays = document.querySelectorAll("p.jss177, [class*='date-display']");
-      for (const el of Array.from(dateDisplays)) {
-        (el as HTMLElement).setAttribute("data-value", date);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-
-      // 3. Try to find Redux store or form state and update directly
-      // Many React apps store state in __REACT_DEVTOOLS_GLOBAL_HOOK__ or similar
-      const reactRoot = document.querySelector("[id^='root'], [id^='app']");
-      if (reactRoot) {
-        const fiberKey = Object.keys(reactRoot).find((k) => k.startsWith("__reactFiber"));
-        if (fiberKey) {
-          // Traverse React fiber tree to find form state
-          // This is very app-specific and likely won't work, but worth a try
-          try {
-            const fiber = (reactRoot as any)[fiberKey];
-            let node: any = fiber;
-            let found = false;
-            while (node && !found) {
-              if (node.memoizedProps && node.memoizedProps.departureDate !== undefined) {
-                node.memoizedProps.departureDate = date;
-                found = true;
-              }
-              if (node.memoizedProps && node.memoizedProps.departDate !== undefined) {
-                node.memoizedProps.departDate = date;
-                found = true;
-              }
-              if (node.memoizedState && node.memoizedState.memoizedState && typeof node.memoizedState.memoizedState === "string" && node.memoizedState.memoizedState.includes("2026")) {
-                node.memoizedState.memoizedState = date;
-                found = true;
-              }
-              node = node.child;
-            }
-            return { method: "fiber-traverse", found };
-          } catch { /* fiber traversal failed */ }
-        }
-      }
-
-      // 4. Look for any input/textarea that might hold the date value
-      const allInputs = document.querySelectorAll("input:not([type='hidden']):not([type='radio']):not([type='checkbox']), textarea");
-      for (const input of Array.from(allInputs)) {
-        const name = (input as HTMLInputElement).name?.toLowerCase() ?? "";
-        const id = (input as HTMLInputElement).id?.toLowerCase() ?? "";
-        if (name.includes("date") || name.includes("depart") || id.includes("date") || id.includes("depart")) {
-          (input as HTMLInputElement).value = date;
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          input.dispatchEvent(new Event("change", { bubbles: true }));
-          return { method: "input-by-name", target: name || id };
-        }
-      }
-
-      return { method: "none-found" };
-    }, { date: formattedDate });
-    logger.info(dateSetResult, "Date injection attempt result");
-
-    // Try to open calendar by clicking date field, then fallback to fiber
-    const dateField = page.locator("p.jss177").first();
-    if (await dateField.count() > 0) {
-      await dateField.click({ force: true });
-      await page.waitForTimeout(1500);
-    }
-
-    // Try calendar selection as fallback
-    await setOnewayAndDate(page, year!, month!, day!);
+    const formattedDate = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+    const searchUrl = `https://www.vietjetair.com/vi/book-flight?departAirport=${origin}&arrivalAirport=${destination}&departDate=${formattedDate}&adults=1&tripType=oneway`;
+    await page.goto(searchUrl, { waitUntil: "networkidle", timeout: TIMEOUT_MS });
+    logger.info({ elapsed: Date.now() - stepStart, newUrl: page.url() }, "Navigated to search page");
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
     // ── 5. Dismiss passenger modal ───────────────────────────────────────────
