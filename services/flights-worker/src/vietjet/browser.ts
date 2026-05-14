@@ -74,17 +74,16 @@ async function doSearch(
     const capturedFlightJson: unknown[] = [];
     context.on("response", async (res) => {
       const url = res.url();
+      // Capture ALL 200 responses from VietJet API domains
       if (
-        url.includes("vietjet") &&
-        url.includes("api") &&
-        url.includes("flight") &&
+        (url.includes("vietjet-api") || url.includes("vietjetcms-api") || url.includes("vietjetair.com/api")) &&
         res.status() === 200
       ) {
         try {
           const body = await res.json();
           capturedFlightJson.push(body);
           logger.info({ url: url.split("?")[0] }, "Captured VietJet API response");
-        } catch { /* ignore */ }
+        } catch { /* ignore non-JSON */ }
       }
     });
 
