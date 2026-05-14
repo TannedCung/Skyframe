@@ -211,23 +211,7 @@ async function selectAirportsViaJS(
   await page.waitForTimeout(600);
   await dismissPromo(page);
   await depInput.pressSequentially(origin, { delay: 100 });
-  await page.waitForTimeout(2000); // longer wait for React autocomplete
-
-  // Debug: dump all visible elements with text after typing
-  const debugAfterType = await page.evaluate(() => {
-    const all = document.querySelectorAll("*");
-    const withText: string[] = [];
-    for (const el of Array.from(all)) {
-      const rect = el.getBoundingClientRect();
-      const txt = (el.textContent ?? "").trim();
-      if (rect.width > 30 && rect.height > 15 && txt.length > 0 && txt.length < 100 && el.childElementCount === 0) {
-        withText.push(`${el.tagName}.${el.className?.toString?.().slice(0, 40)}: "${txt}" [${Math.round(rect.top)},${Math.round(rect.left)}]`);
-      }
-    }
-    return withText.slice(0, 50);
-  });
-  logger.info({ debugAfterType }, "DOM elements after typing");
-
+  await page.waitForTimeout(2000);
   await clickDropdownItem(page, origin, "departure");
   await page.waitForTimeout(500);
 
@@ -249,30 +233,30 @@ async function clickDropdownItem(
   const result = await page.evaluate((code) => {
     const codeUpper = code.toUpperCase();
 
+    // Airport items on VietJet use JSS classes like jss778/jss779/jss780
+    // which don't match any semantic selector. Search ALL visible divs and spans.
     const allItems = document.querySelectorAll(
       "li, [role='option'], .dropdown-item, .list-group-item, " +
       ".airport-item, .location-item, [data-iata], " +
-      "div[class*='item'], div[class*='airport'], div[class*='location']"
+      "div[class*='item'], div[class*='airport'], div[class*='location'], " +
+      "div.jss, span.jss, [class*='MuiAutocomplete'], [class*='MuiPaper']"
     );
 
-    // Also check autocomplete results, paper elements, and anything with 'airport' in text
-    const additionalItems = document.querySelectorAll(
-      "[class*='Autocomplete'], [class*='autocomplete'], [class*='Paper'], [class*='paper'], " +
-      "ul[role='listbox'], ul[class*='Mui'], [role='listbox'], " +
-      "span[class*='Mui'], p[class*='Mui'], a[class*='Mui']"
-    );
-    const combined = new Set([...Array.from(allItems), ...Array.from(additionalItems)]);
+    // Also grab ALL divs and spans that have meaningful text (catches JSS classes)
+    const allDivs = document.querySelectorAll("div, span, li, a");
+    const combined = new Set([...Array.from(allItems), ...Array.from(allDivs)]);
 
     const debugTexts: string[] = [];
     for (const el of Array.from(combined)) {
       const txt = (el.textContent ?? "").trim().toUpperCase();
       const rect = el.getBoundingClientRect();
-      debugTexts.push(`${(el as HTMLElement).tagName}: "${(el.textContent ?? "").trim().slice(0, 60)}" (${rect.width}x${rect.height})`);
 
       // Skip hidden or very small elements
       if (rect.width < 20 || rect.height < 10) continue;
-      // Skip the input itself and its wrapper
-      if (el.tagName === "INPUT" || el.tagName === "FORM") continue;
+      // Skip inputs, forms, scripts
+      if (el.tagName === "INPUT" || el.tagName === "FORM" || el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;
+      // Skip elements with too many children (we want leaf-level items)
+      if (el.childElementCount > 3) continue;
 
       const iataAttr = (el as HTMLElement).dataset?.iata?.toUpperCase();
       if (
@@ -288,15 +272,11 @@ async function clickDropdownItem(
       }
     }
 
-    return { clicked: false, debugTexts, totalItems: allItems.length };
+    return { clicked: false };
   }, iataCode);
 
   if (!result.clicked) {
-    const debugTexts = (result as any).debugTexts ?? [];
-    throw new Error(
-      `No dropdown item matching "${iataCode}" found for ${label}. ` +
-      `Found ${(result as any).totalItems ?? "unknown"} elements: ${JSON.stringify(debugTexts.slice(0, 20))}`
-    );
+    throw new Error(`No dropdown item matching "${iataCode}" found for ${label}`);
   }
 
   logger.info({ label, iataCode, matchedText: (result as any).text }, "Dropdown item clicked");
