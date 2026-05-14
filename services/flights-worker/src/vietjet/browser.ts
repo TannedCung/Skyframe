@@ -74,8 +74,8 @@ async function doSearch(
     const capturedFlightJson: unknown[] = [];
     context.on("response", async (res) => {
       if (
-        res.url().includes("vietjet-api.vietjetair.com") &&
-        res.url().includes("search-flight") &&
+        res.url().includes("vietjet") &&
+        res.url().includes("api") &&
         res.status() === 200
       ) {
         try {
@@ -324,6 +324,20 @@ async function selectCalendarDay(
   const targetMonthStr = vjMonthNames[month]!;
 
   await page.waitForTimeout(500);
+
+  // Check if calendar is visible
+  const calendarInfo = await page.evaluate(() => {
+    const rdrMonths = document.querySelectorAll(".rdrMonth");
+    const calendars = document.querySelectorAll("[class*='calendar'], [class*='Calendar'], [class*='DateRange'], [class*='daterange']");
+    const dateDisplays = document.querySelectorAll("p.jss177, [class*='date'], label[class*='Date']");
+    return {
+      rdrMonthCount: rdrMonths.length,
+      calendarCount: calendars.length,
+      dateDisplayCount: dateDisplays.length,
+      pageUrl: window.location.href,
+    };
+  });
+  logger.info(calendarInfo, "Calendar state before date selection");
 
   for (let attempt = 0; attempt < 13; attempt++) {
     const result = await page.evaluate(
