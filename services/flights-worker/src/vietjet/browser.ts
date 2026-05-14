@@ -119,7 +119,8 @@ async function doSearch(
     stepStart = Date.now();
     const formattedDate = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
     const searchUrl = `https://www.vietjetair.com/vi/book-flight?departAirport=${origin}&arrivalAirport=${destination}&departDate=${formattedDate}&adults=1&tripType=oneway`;
-    await page.goto(searchUrl, { waitUntil: "networkidle", timeout: TIMEOUT_MS });
+    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
+    await page.waitForTimeout(3000); // wait for JS to hydrate
     logger.info({ elapsed: Date.now() - stepStart, newUrl: page.url() }, "Navigated to search page");
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
