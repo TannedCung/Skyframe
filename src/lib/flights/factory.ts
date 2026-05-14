@@ -60,10 +60,19 @@ export function getFlightProvider(): CompositeFlightProvider {
     });
   }
 
-  // Google Flights: no API key, Chrome TLS impersonation via impers.
+  // Google Flights: real prices via Chrome TLS impersonation behind an external
+  // worker (services/google-flights-worker/, deployed on Railway/Fly).
   // Placed after Kiwi/VietJet (which have booking links), before AirLabs.
-  if (process.env["GOOGLE_FLIGHTS_ENABLED"] === "true") {
-    chain.push({ name: "google", provider: new GoogleFlightsProvider() });
+  const googleServiceUrl = process.env["GOOGLE_FLIGHTS_SERVICE_URL"];
+  const googleServiceSecret = process.env["GOOGLE_FLIGHTS_SERVICE_SECRET"];
+  if (googleServiceUrl && googleServiceSecret) {
+    chain.push({
+      name: "google",
+      provider: new GoogleFlightsProvider({
+        serviceUrl: googleServiceUrl,
+        serviceSecret: googleServiceSecret,
+      }),
+    });
   }
 
   const airlabsKey = process.env["AIRLABS_API_KEY"];
@@ -113,9 +122,13 @@ export function getFlightProviderForUser(pref: GdsProvider): FlightProvider {
   }
 
   if (pref === "google") {
-    if (process.env["GOOGLE_FLIGHTS_ENABLED"] !== "true")
-      throw Errors.serviceUnavailable("Google Flights (GOOGLE_FLIGHTS_ENABLED not set)");
-    return new GoogleFlightsProvider();
+    const url = process.env["GOOGLE_FLIGHTS_SERVICE_URL"];
+    const secret = process.env["GOOGLE_FLIGHTS_SERVICE_SECRET"];
+    if (!url || !secret)
+      throw Errors.serviceUnavailable(
+        "Google Flights worker (GOOGLE_FLIGHTS_SERVICE_URL/SECRET not set)",
+      );
+    return new GoogleFlightsProvider({ serviceUrl: url, serviceSecret: secret });
   }
 
   return getFlightProvider();
