@@ -327,6 +327,24 @@ export default function SettingsPage() {
                           : "var(--color-cream-50, #FFFAEC)",
                       }}
                     >
+                      <input
+                        type="radio"
+                        name="gdsProvider"
+                        value={opt.value}
+                        checked={active}
+                        onChange={() => setPrefs((p) => ({ ...p, gdsProvider: opt.value }))}
+                        style={{
+                          position: "absolute",
+                          width: 1,
+                          height: 1,
+                          padding: 0,
+                          margin: -1,
+                          overflow: "hidden",
+                          clip: "rect(0,0,0,0)",
+                          whiteSpace: "nowrap",
+                          border: 0,
+                        }}
+                      />
                       <span
                         className="mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0"
                         style={{
