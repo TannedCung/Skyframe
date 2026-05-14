@@ -90,6 +90,7 @@ Section rules:
   - "Feb 10 to Feb 20" with no year → pick the SOONEST future occurrence of that window. If Feb has already passed this year, that's Feb of next year.
   - When in any doubt, confirm the year with the user before calling \`save_trip_info\`.
 - Once all three MUST fields are set, call \`search_flights\` automatically and add a Flights section to the plan.
+- When the user confirms they want to proceed with a flight (e.g. "lock it", "looks good", "book this one"), call \`lock_flights\` to lock the best fare and write it into the plan. This replaces the generic \`search_flights\` output with a confirmed, locked Flights section.
 - Call \`finalize_trip\` ONLY when the user explicitly confirms (e.g. "Yes", "Let's go", "Book it", "Looks good"). Do NOT call finalize_trip on a trip that is already \`active\` — it has been finalized before and the user is back to refine.
 - Keep chat responses concise — 1-3 sentences per turn. The plan document is where detail lives.
 
@@ -209,6 +210,95 @@ function buildTools(tripId: string) {
     },
   });
 
+  const lockFlights = new FunctionTool({
+    name: "lock_flights",
+    description:
+      "Lock the best flight option and add it to the plan. Call when the user says 'lock', 'book it', 'looks good' after seeing flight options, or explicitly asks to lock the flight. Searches live fares, picks the cheapest option, and writes a Flights section into the plan.",
+    parameters: {
+      type: "object",
+      properties: {
+        origin: { type: "string", description: "Departure IATA code" },
+        destination: { type: "string", description: "Arrival IATA code" },
+        dateFrom: { type: "string", description: "Departure date YYYY-MM-DD" },
+        dateTo: { type: "string", description: "Return date YYYY-MM-DD" },
+        roundTrip: { type: "boolean" },
+      },
+    } as unknown as Schema,
+    execute: async (input: unknown) => {
+      const args = input as {
+        origin: string;
+        destination: string;
+        dateFrom: string;
+        dateTo: string;
+        roundTrip?: boolean;
+      };
+      try {
+        const provider = getFlightProvider();
+        const results = await provider.searchFlights({
+          origin: args.origin,
+          destination: args.destination,
+          dateFrom: args.dateFrom,
+          dateTo: args.dateTo || args.dateFrom,
+          roundTrip: args.roundTrip ?? false,
+          preferenceCheapest: true,
+          preferenceFlightTime: "any",
+        });
+
+        if (results.length === 0) {
+          return {
+            success: false,
+            message: "No flights found for these dates. Ask the user to adjust dates.",
+          };
+        }
+
+        // Pick cheapest
+        const best = results.sort((a, b) => a.price - b.price)[0]!;
+
+        // Build a markdown Flights section
+        const outbound = best.outbound;
+        const ret = best.inbound;
+        let flightsMd = `## Flights\n\n**Locked · ${best.provider}**\n\n`;
+        flightsMd += `| Leg | Flight | Route | Time | Price |\n`;
+        flightsMd += `|---|---|---|---|---|\n`;
+        flightsMd += `| OUT | ${outbound.airline} ${outbound.flightNumber} | ${outbound.from} → ${outbound.to} | ${outbound.departureTime} → ${outbound.arrivalTime} | ${best.priceAvailable ? `${best.price} ${best.currency}` : "N/A"} |\n`;
+        if (ret) {
+          flightsMd += `| RET | ${ret.airline} ${ret.flightNumber} | ${ret.from} → ${ret.to} | ${ret.departureTime} → ${ret.arrivalTime} | included |\n`;
+        }
+        if (best.bookingLink) {
+          flightsMd += `\n[Book this flight](${best.bookingLink})\n`;
+        }
+        flightsMd += `\n**Total: ${best.priceAvailable ? `${best.price} ${best.currency}` : "N/A"}** per person\n`;
+
+        // Read existing plan, replace Flights section
+        const existingPlan = await getTripDraftPlan(tripId);
+        const updatedPlan = replaceFlightsSection(existingPlan, flightsMd);
+        await updateTripDraftPlan(tripId, updatedPlan);
+
+        logger.info(
+          { tripId, flightNumber: outbound.flightNumber, price: best.price },
+          "Flights locked",
+        );
+        return {
+          success: true,
+          markdown: updatedPlan,
+          flight: {
+            airline: outbound.airline,
+            flightNumber: outbound.flightNumber,
+            price: best.price,
+            currency: best.currency,
+            bookingLink: best.bookingLink,
+          },
+        };
+      } catch (err) {
+        logger.warn({ err }, "lock_flights failed");
+        return {
+          success: false,
+          message: "Could not lock flights right now. Try again shortly.",
+        };
+      }
+    },
+  });
+
   const draftPlanTool = new FunctionTool({
     name: "draft_plan",
     description:
@@ -269,7 +359,36 @@ function buildTools(tripId: string) {
     },
   });
 
-  return [saveTripInfo, searchFlights, draftPlanTool, generateDetailedPlanTool, finalizeTrip];
+  return [
+    saveTripInfo,
+    searchFlights,
+    lockFlights,
+    draftPlanTool,
+    generateDetailedPlanTool,
+    finalizeTrip,
+  ];
+}
+
+/** Replace the ## Flights section in an existing plan, or append it. */
+function replaceFlightsSection(plan: string | null, flightsMd: string): string {
+  if (!plan || plan.trim() === "") return flightsMd;
+  const start = plan.indexOf("## Flights");
+  if (start === -1) {
+    return `${plan.trimEnd()}\n\n${flightsMd.trim()}\n`;
+  }
+  // Find the next ## heading after Flights
+  const after = plan.slice(start + "## Flights".length);
+  const nextMatch = after.match(/\n## /);
+  const endOffset = nextMatch ? nextMatch.index! : after.length;
+  return (
+    (
+      plan.slice(0, start).trimEnd() +
+      "\n\n" +
+      flightsMd.trim() +
+      "\n\n" +
+      after.slice(endOffset).trimStart()
+    ).trimEnd() + "\n"
+  );
 }
 
 export async function* runTripPlannerAgent(
@@ -347,10 +466,12 @@ export async function* runTripPlannerAgent(
       if (part.functionResponse) {
         const fr = part.functionResponse as {
           name?: string;
-          response?: { redirect?: string; markdown?: string };
+          response?: { redirect?: string; markdown?: string; success?: boolean };
         };
         if (
-          (fr.name === "draft_plan" || fr.name === "generate_detailed_plan") &&
+          (fr.name === "draft_plan" ||
+            fr.name === "generate_detailed_plan" ||
+            fr.name === "lock_flights") &&
           typeof fr.response?.markdown === "string"
         ) {
           yield { type: "plan_update", markdown: fr.response.markdown };

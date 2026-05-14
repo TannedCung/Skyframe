@@ -4,9 +4,10 @@ import type { Trip } from "@/types";
 interface PlanHeaderProps {
   trip: Trip | null;
   hint?: { active: boolean; text: string };
+  flightsLocked?: boolean;
 }
 
-export function PlanHeader({ trip, hint }: PlanHeaderProps) {
+export function PlanHeader({ trip, hint, flightsLocked = false }: PlanHeaderProps) {
   if (!trip) {
     return (
       <div
@@ -75,6 +76,17 @@ export function PlanHeader({ trip, hint }: PlanHeaderProps) {
         >
           {trip.title}
         </h2>
+        {flightsLocked && (
+          <span
+            className="font-bold font-mono text-sm"
+            style={{
+              color: "var(--color-coral-700, #B85633)",
+              animation: "sfPriceTick .8s ease both",
+            }}
+          >
+            $1,242
+          </span>
+        )}
       </div>
       <div
         className="flex items-center gap-3 mt-1.5 text-xs"
@@ -95,6 +107,12 @@ export function PlanHeader({ trip, hint }: PlanHeaderProps) {
           <>
             <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
             <span>±{trip.flexibilityDays}d flex</span>
+          </>
+        )}
+        {trip.userId && (
+          <>
+            <span style={{ color: "var(--color-ink-400, #B6A593)" }}>·</span>
+            <span>2 travelers</span>
           </>
         )}
         {hint && hint.active && (
