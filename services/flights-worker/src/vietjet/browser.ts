@@ -68,7 +68,14 @@ export async function searchVietJetFlights(
     // ── 3. Select departure airport ───────────────────────────────────────────
     logger.info({ origin }, "Selecting departure airport");
     const inputs = await page.locator("input[type='text']").all();
-    await inputs[0]!.click({ force: true });
+    if (inputs.length === 0) {
+      const allInputs = await page.locator("input").all();
+      logger.warn({ count: allInputs.length }, "No text-type inputs found, trying generic input");
+      if (allInputs.length === 0) throw new Error("No input elements found on page");
+      await allInputs[0]!.click({ force: true });
+    } else {
+      await inputs[0]!.click({ force: true });
+    }
     await page.waitForTimeout(1_500);
 
     // Dismiss promo popup inside the airport modal

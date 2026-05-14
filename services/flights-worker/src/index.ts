@@ -133,8 +133,49 @@ async function handleVietJetSearch(req: http.IncomingMessage, res: http.ServerRe
     setCache(key, result);
     json(res, 200, result);
   } catch (err) {
-    logger.error({ err, key }, "VietJet search failed");
-    json(res, 503, { error: "VietJet search failed", detail: String(err) });
+    const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+    logger.error({ err: msg, key }, "VietJet search failed");
+    json(res, 503, { error: "VietJet search failed", detail: msg });
+  }
+}
+
+// ─── Debug ─────────────────────────────────────────────────────────────────────
+
+async function handleVietJetDebug(_req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  try {
+    const { chromium, devices } = await import("playwright");
+    const browser = await chromium.launch({ headless: true, args: ["--disable-dev-shm-usage"] });
+    try {
+      const context = await browser.newContext({ ...devices["iPhone 12 Pro"], locale: "vi-VN" });
+      const page = await context.newPage();
+      await page.goto("https://www.vietjetair.com/vi", { waitUntil: "networkidle", timeout: 30_000 });
+
+      // Screenshot
+      const screenshot = await page.screenshot();
+
+      // DOM diagnostics
+      const inputCount = await page.locator("input").count();
+      const textInputCount = await page.locator("input[type='text']").count();
+      const textInputs = await page.locator("input[type='text']").all();
+      const placeholders = await Promise.all(
+        textInputs.map((el) => el.getAttribute("placeholder").catch(() => null)),
+      );
+      const pageText = await page.evaluate(() => document.title);
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        title: pageText,
+        inputCount,
+        textInputCount,
+        placeholders: placeholders.filter(Boolean),
+        screenshotBase64: screenshot.toString("base64"),
+      }));
+    } finally {
+      await browser.close();
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+    json(res, 500, { error: "Debug failed", detail: msg });
   }
 }
 
@@ -156,8 +197,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Google Flights: POST /search/google
-    if (req.method === "POST" && url.pathname === "/search/google") {
+    // Debug: GET /debug/vietjet — takes a screenshot of the VietJet homepage
+    if (req.method === "GET" && url.pathname === "/debug/vietjet") {
+      await handleVietJetDebug(req, res);
+      return;
+    }
       await handleGoogleSearch(req, res);
       return;
     }
