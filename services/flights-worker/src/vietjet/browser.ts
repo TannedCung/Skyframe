@@ -67,14 +67,24 @@ export async function searchVietJetFlights(
 
     // ── 3. Select departure airport ───────────────────────────────────────────
     logger.info({ origin }, "Selecting departure airport");
-    const inputs = await page.locator("input[type='text']").all();
-    if (inputs.length === 0) {
-      const allInputs = await page.locator("input").all();
-      logger.warn({ count: allInputs.length }, "No text-type inputs found, trying generic input");
-      if (allInputs.length === 0) throw new Error("No input elements found on page");
-      await allInputs[0]!.click({ force: true });
+
+    // Click the departure airport input directly by placeholder
+    const depInput = page.locator("input[placeholder='Điểm khởi hành']").first();
+    if (await depInput.count() > 0) {
+      await depInput.click({ force: true });
     } else {
-      await inputs[0]!.click({ force: true });
+      // Fallback: try generic text inputs
+      const inputs = await page.locator("input[type='text']").all();
+      if (inputs.length > 0) {
+        await inputs[0]!.click({ force: true });
+      } else {
+        const allInputs = await page.locator("input").all();
+        if (allInputs.length > 0) {
+          await allInputs[0]!.click({ force: true });
+        } else {
+          throw new Error("No input elements found on page");
+        }
+      }
     }
     await page.waitForTimeout(1_500);
 
@@ -82,9 +92,8 @@ export async function searchVietJetFlights(
     await dismissPromo(page);
 
     // Type IATA code and pick from dropdown
-    const depModal = page.locator("input[placeholder='Điểm khởi hành']").first();
-    if (await depModal.count() > 0) {
-      await depModal.fill(origin);
+    if (await depInput.count() > 0) {
+      await depInput.fill(origin);
       await page.waitForTimeout(1_200);
     }
     await clickAirportDiv(page, origin);
@@ -167,22 +176,34 @@ async function dismissPromo(page: import("playwright").Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** Click the exact-text IATA code div in the airport dropdown. */
+/** Click the first div containing the IATA code in the airport dropdown. */
 async function clickAirportDiv(
   page: import("playwright").Page,
   iataCode: string,
 ): Promise<void> {
-  const divItems = page.locator("div").filter({ hasText: new RegExp(`^\\s*${iataCode}\\s*$`) });
-  const count = await divItems.count();
-  for (let i = count - 1; i >= 0; i--) {
-    const txt = ((await divItems.nth(i).textContent()) ?? "").trim();
-    if (txt === iataCode) {
-      await divItems.nth(i).click({ force: true, timeout: 5_000 });
+  // Wait for dropdown to appear
+  await page.waitForTimeout(500);
+
+  // Try exact match first, then partial match (site may show "HAN - Noi Bai" etc.)
+  const candidates = await page.locator("div").all();
+  for (const div of candidates) {
+    const txt = (await div.textContent()).trim();
+    if (txt === iataCode || txt.startsWith(iataCode) || txt.includes(`(${iataCode})`)) {
+      await div.click({ force: true, timeout: 5_000 });
       await page.waitForTimeout(800);
       return;
     }
   }
-  throw new Error(`No airport div with exact text "${iataCode}"`);
+
+  // Fallback: click the first div containing the IATA code
+  const fallback = page.locator("div").filter({ hasText: iataCode }).first();
+  if (await fallback.count() > 0) {
+    await fallback.click({ force: true, timeout: 5_000 });
+    await page.waitForTimeout(800);
+    return;
+  }
+
+  throw new Error(`No airport div containing "${iataCode}" found in dropdown`);
 }
 
 /** Switch to one-way via React native setter, then tap the target calendar day. */
