@@ -3,7 +3,8 @@ import { logger } from "../logger.js";
 
 const WAF_COOKIE_NAME = "aws-waf-token";
 const HOMEPAGE = "https://www.vietjetair.com/vi";
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 45_000; // reduced from 90s
+const API_CAPTURE_TIMEOUT_MS = 30_000; // reduced from 45s
 
 export interface VietJetFlightResult {
   flightNumber: string;
@@ -83,14 +84,14 @@ async function doSearch(
     const page = await context.newPage();
 
     // ── 1. Homepage → WAF cookie ──────────────────────────────────────────────
-    await page.goto(HOMEPAGE, { waitUntil: "networkidle", timeout: TIMEOUT_MS });
-    await waitForCookie(context, WAF_COOKIE_NAME, 20_000);
+    await page.goto(HOMEPAGE, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
+    await waitForCookie(context, WAF_COOKIE_NAME, 10_000);
     logger.info("WAF cookie acquired");
 
     // ── 2. Dismiss cookie consent banner ─────────────────────────────────────
     await safeClick(page, page.getByRole("button", { name: /đồng ý/i }).first(), 5_000);
     logger.info("Cookie banner dismissed");
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(400);
 
     // ── 3. Select departure airport ───────────────────────────────────────────
     logger.info({ origin }, "Selecting departure airport");
@@ -113,7 +114,7 @@ async function doSearch(
         }
       }
     }
-    await page.waitForTimeout(1_500);
+    await page.waitForTimeout(800);
 
     // Dismiss promo popup inside the airport modal
     await dismissPromo(page);
@@ -121,10 +122,10 @@ async function doSearch(
     // Type IATA code and pick from dropdown
     if (await depInput.count() > 0) {
       await depInput.fill(origin);
-      await page.waitForTimeout(1_200);
+      await page.waitForTimeout(600);
     }
     await clickAirportDiv(page, origin);
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(500);
     logger.info({ origin }, "Departure airport selected");
 
     // ── 4. Select arrival airport ─────────────────────────────────────────────
@@ -134,10 +135,10 @@ async function doSearch(
     const arrModal = page.locator("input[placeholder='Điểm đến']").first();
     if (await arrModal.count() > 0) {
       await arrModal.fill(destination);
-      await page.waitForTimeout(1_200);
+      await page.waitForTimeout(600);
     }
     await clickAirportDiv(page, destination);
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(500);
     logger.info({ destination }, "Arrival airport selected");
 
     // ── 5. Calendar is now auto-open — set one-way + select date ─────────────
@@ -147,7 +148,7 @@ async function doSearch(
 
     // ── 6. Dismiss passenger modal that auto-opens after date selection ───────
     logger.info("Dismissing passenger modal");
-    await page.waitForTimeout(1_500);
+    await page.waitForTimeout(800);
     await dismissPromo(page);
     await dismissPassengerModal(page);
 
@@ -158,9 +159,9 @@ async function doSearch(
       await searchBtn.click({ force: true });
     }
 
-    // ── 8. Wait for API responses (up to 45 s) ───────────────────────────────
+    // ── 8. Wait for API responses ─────────────────────────────────────────────
     logger.info("Waiting for flight data");
-    const deadline = Date.now() + 45_000;
+    const deadline = Date.now() + API_CAPTURE_TIMEOUT_MS;
     while (capturedFlightJson.length === 0 && Date.now() < deadline) {
       await page.waitForTimeout(500);
     }
