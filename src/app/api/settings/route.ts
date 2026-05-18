@@ -5,7 +5,7 @@ import { getUserById, updateUserPreferences } from "@/lib/db/queries/users";
 import { apiError, Errors } from "@/lib/errors";
 import type { UserPreferences, GdsProvider } from "@/types";
 
-const GDS_PROVIDERS: GdsProvider[] = ["auto", "kiwi", "vietjet", "airlabs"];
+const GDS_PROVIDERS: GdsProvider[] = ["auto", "kiwi", "vietjet", "airlabs", "google"];
 
 export async function GET(): Promise<NextResponse> {
   try {
