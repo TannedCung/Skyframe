@@ -2,11 +2,11 @@ import type { FlightProvider, FlightSearchParams, FlightOption, FlightLeg } from
 import logger from "@/lib/logger";
 
 const BOOKING_BASE_URL = "https://www.vietjetair.com/vi/select-flight";
-// Single attempt only — the worker's browser search can hang for up to a
-// minute on cold start; retries multiply the wait and blow the function
-// budget. See ops incident on 2026-05-18.
+// Single attempt only — the worker's browser search can hang for up to ~2
+// minutes (calendar navigation + Playwright interactions). Retries multiply
+// the wait and blow the function budget. See ops incident on 2026-05-18.
 const MAX_RETRIES = 1;
-const FETCH_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 150_000;
 
 interface ServiceFlight {
   flightNumber: string;

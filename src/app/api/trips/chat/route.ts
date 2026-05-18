@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { apiError, Errors } from "@/lib/errors";
 import { createTrip } from "@/lib/db/queries/trips";
 import { appendChatMessage } from "@/lib/db/queries/chat";
+import { getUserById } from "@/lib/db/queries/users";
 import { runTripPlannerAgent } from "@/lib/agent/trip-planner";
 import type { ChatMessage } from "@/lib/agent/trip-planner";
 import logger from "@/lib/logger";
@@ -27,10 +28,21 @@ export async function POST(req: Request) {
   }
   let tripId = body.tripId;
 
+  let cancelled = false;
   const stream = new ReadableStream({
+    cancel() {
+      cancelled = true;
+    },
     async start(controller) {
       const enc = new TextEncoder();
-      const emit = (data: unknown) => controller.enqueue(enc.encode(sseEvent(data)));
+      const emit = (data: unknown) => {
+        if (cancelled) return;
+        try {
+          controller.enqueue(enc.encode(sseEvent(data)));
+        } catch {
+          cancelled = true;
+        }
+      };
 
       try {
         if (!tripId) {
@@ -57,8 +69,11 @@ export async function POST(req: Request) {
           await appendChatMessage(tripId, "user", lastUserMessage.content);
         }
 
+        const user = await getUserById(userId);
+        const gdsProvider = user?.gdsProvider ?? "auto";
+
         let assistantText = "";
-        for await (const event of runTripPlannerAgent(messages, tripId, userId)) {
+        for await (const event of runTripPlannerAgent(messages, tripId, userId, gdsProvider)) {
           if (event.type === "text") assistantText += event.delta;
           emit(event);
           if (event.type === "done") break;
@@ -67,10 +82,22 @@ export async function POST(req: Request) {
           await appendChatMessage(tripId, "model", assistantText);
         }
       } catch (err) {
-        logger.error({ err }, "Chat agent error");
-        emit({ type: "error", message: "Something went wrong. Please try again." });
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error({ err, message }, "Chat agent error");
+        emit({
+          type: "error",
+          message:
+            process.env["NODE_ENV"] === "production"
+              ? "Something went wrong. Please try again."
+              : message,
+        });
       } finally {
-        controller.close();
+        cancelled = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       }
     },
   });

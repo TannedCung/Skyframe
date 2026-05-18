@@ -18,7 +18,8 @@ import {
   getTripDraftPlan,
 } from "@/lib/db/queries/trips";
 import type { TripChatFields } from "@/lib/db/queries/trips";
-import { getFlightProvider } from "@/lib/flights/factory";
+import { getFlightProviderForUser } from "@/lib/flights/factory";
+import type { GdsProvider } from "@/types";
 import { generateDetailedPlan } from "./detailed-plan";
 import logger from "@/lib/logger";
 
@@ -124,7 +125,7 @@ export type AgentEvent =
   | { type: "done"; tripId: string; redirect?: string }
   | { type: "trip_created"; tripId: string };
 
-function buildTools(tripId: string) {
+function buildTools(tripId: string, gdsProvider: GdsProvider) {
   const saveTripInfo = new FunctionTool({
     name: "save_trip_info",
     description:
@@ -177,7 +178,7 @@ function buildTools(tripId: string) {
         roundTrip?: boolean;
       };
       try {
-        const provider = getFlightProvider();
+        const provider = getFlightProviderForUser(gdsProvider);
         const results = await provider.searchFlights({
           origin: args.origin,
           destination: args.destination,
@@ -234,7 +235,7 @@ function buildTools(tripId: string) {
         roundTrip?: boolean;
       };
       try {
-        const provider = getFlightProvider();
+        const provider = getFlightProviderForUser(gdsProvider);
         const results = await provider.searchFlights({
           origin: args.origin,
           destination: args.destination,
@@ -412,6 +413,7 @@ export async function* runTripPlannerAgent(
   messages: ChatMessage[],
   tripId: string,
   userId: string,
+  gdsProvider: GdsProvider = "auto",
 ): AsyncGenerator<AgentEvent> {
   if (messages.length === 0) return;
 
@@ -429,7 +431,7 @@ export async function* runTripPlannerAgent(
       status: trip?.status ?? "draft",
       hasPlan: !!existingPlan,
     }),
-    tools: buildTools(tripId),
+    tools: buildTools(tripId, gdsProvider),
   });
 
   const sessionService = new InMemorySessionService();

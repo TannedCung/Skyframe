@@ -72,19 +72,18 @@ async function doSearch(
     });
 
     const capturedFlightJson: unknown[] = [];
+    let hasSearchFlightResponse = false;
     context.on("response", async (res) => {
       const url = res.url();
-      // Capture ALL 200 responses from VietJet API domains
-      if (
-        (url.includes("vietjet-api") || url.includes("vietjetcms-api") || url.includes("vietjetair.com/api")) &&
-        res.status() === 200
-      ) {
-        try {
-          const body = await res.json();
-          capturedFlightJson.push(body);
-          logger.info({ url: url.split("?")[0] }, "Captured VietJet API response");
-        } catch { /* ignore non-JSON */ }
-      }
+      // CMS responses are noise — only the booking API matters for flight data.
+      if (!url.includes("vietjet-api.vietjetair.com") || res.status() !== 200) return;
+      try {
+        const body = await res.json();
+        capturedFlightJson.push(body);
+        const isSearchFlight = url.includes("/search-flight");
+        if (isSearchFlight) hasSearchFlightResponse = true;
+        logger.info({ url: url.split("?")[0], isSearchFlight }, "Captured VietJet booking response");
+      } catch { /* ignore non-JSON */ }
     });
 
     const page = await context.newPage();
@@ -113,14 +112,12 @@ async function doSearch(
 
     logger.info({ elapsed: Date.now() - stepStart }, "Airports selected");
 
-    // ── 4. Navigate to search URL directly (bypass calendar) ─────────────────
-    logger.info({ departDate }, "Navigating to search URL");
+    // ── 4. Set one-way + select date on the auto-opened calendar ────────────
+    // Direct nav to /vi/book-flight loses React state and redirects to home —
+    // the calendar auto-opens after airport selection, so drive it instead.
+    logger.info({ departDate }, "Selecting date on calendar");
     stepStart = Date.now();
-    const formattedDate = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
-    const searchUrl = `https://www.vietjetair.com/vi/book-flight?departAirport=${origin}&arrivalAirport=${destination}&departDate=${formattedDate}&adults=1&tripType=oneway`;
-    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: TIMEOUT_MS });
-    await page.waitForTimeout(3000); // wait for JS to hydrate
-    logger.info({ elapsed: Date.now() - stepStart, newUrl: page.url() }, "Navigated to search page");
+    await setOnewayAndDate(page, year, month, day);
     logger.info({ elapsed: Date.now() - stepStart }, "Date selection complete");
 
     // ── 5. Dismiss passenger modal ───────────────────────────────────────────
@@ -135,15 +132,28 @@ async function doSearch(
     logger.info("Submitting search");
     stepStart = Date.now();
     const searchBtn = page.locator("button").filter({ hasText: /Tìm chuyến/i }).last();
-    if (await searchBtn.count() > 0) {
-      await searchBtn.click({ force: true });
+    const searchBtnCount = await searchBtn.count();
+    if (searchBtnCount === 0) {
+      logger.warn("No 'Tìm chuyến' button found — search will not fire");
+    } else {
+      try {
+        await searchBtn.click({ force: true, timeout: 5_000 });
+      } catch (err) {
+        logger.warn({ err: String(err) }, "Search button click failed, retrying via dispatchEvent");
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("button"));
+          const target = btns.reverse().find((b) => /Tìm chuyến/i.test(b.textContent ?? ""));
+          if (target) target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        });
+      }
     }
-    logger.info({ elapsed: Date.now() - stepStart }, "Search submitted");
+    logger.info({ elapsed: Date.now() - stepStart, searchBtnCount }, "Search submitted");
 
-    // ── 7. Wait for API responses ─────────────────────────────────────────────
-    logger.info("Waiting for flight data");
+    // ── 7. Wait for /search-flight response specifically ─────────────────────
+    // CMS responses arrive constantly — only the booking API has flight data.
+    logger.info("Waiting for /search-flight response");
     const deadline = Date.now() + API_CAPTURE_TIMEOUT_MS;
-    while (capturedFlightJson.length === 0 && Date.now() < deadline) {
+    while (!hasSearchFlightResponse && Date.now() < deadline) {
       await page.waitForTimeout(500);
     }
 
@@ -228,62 +238,30 @@ async function selectAirportsViaJS(
   await clickDropdownItem(page, destination, "arrival");
 }
 
-/** Click a dropdown item matching the IATA code using page.evaluate. */
+/** Click a dropdown item matching the IATA code via Playwright tap. */
 async function clickDropdownItem(
   page: import("playwright").Page,
   iataCode: string,
   label: string,
 ): Promise<void> {
-  const result = await page.evaluate((code) => {
-    const codeUpper = code.toUpperCase();
-
-    // Airport items on VietJet use JSS classes like jss778/jss779/jss780
-    // which don't match any semantic selector. Search ALL visible divs and spans.
-    const allItems = document.querySelectorAll(
-      "li, [role='option'], .dropdown-item, .list-group-item, " +
-      ".airport-item, .location-item, [data-iata], " +
-      "div[class*='item'], div[class*='airport'], div[class*='location'], " +
-      "div.jss, span.jss, [class*='MuiAutocomplete'], [class*='MuiPaper']"
-    );
-
-    // Also grab ALL divs and spans that have meaningful text (catches JSS classes)
-    const allDivs = document.querySelectorAll("div, span, li, a");
-    const combined = new Set([...Array.from(allItems), ...Array.from(allDivs)]);
-
-    const debugTexts: string[] = [];
-    for (const el of Array.from(combined)) {
-      const txt = (el.textContent ?? "").trim().toUpperCase();
-      const rect = el.getBoundingClientRect();
-
-      // Skip hidden or very small elements
-      if (rect.width < 20 || rect.height < 10) continue;
-      // Skip inputs, forms, scripts
-      if (el.tagName === "INPUT" || el.tagName === "FORM" || el.tagName === "SCRIPT" || el.tagName === "STYLE") continue;
-      // Skip elements with too many children (we want leaf-level items)
-      if (el.childElementCount > 3) continue;
-
-      const iataAttr = (el as HTMLElement).dataset?.iata?.toUpperCase();
-      if (
-        iataAttr === codeUpper ||
-        txt === codeUpper ||
-        txt.startsWith(codeUpper + " ") ||
-        txt.startsWith(codeUpper + " -") ||
-        txt.includes(`(${codeUpper})`) ||
-        txt.startsWith(codeUpper + "—")
-      ) {
-        (el as HTMLElement).click();
-        return { clicked: true, text: txt, tag: el.tagName };
-      }
-    }
-
-    return { clicked: false };
-  }, iataCode);
-
-  if (!result.clicked) {
-    throw new Error(`No dropdown item matching "${iataCode}" found for ${label}`);
+  // DOM .click() doesn't trigger React in iPhone touch context — must use
+  // Playwright .click()/.tap() so touch events fire. Walk divs from last to
+  // first because the leaf-level div containing just the IATA code is usually
+  // the actual clickable row.
+  const codeRe = new RegExp(`^\\s*${iataCode}\\s*$`);
+  const divItems = page.locator("div").filter({ hasText: codeRe });
+  const count = await divItems.count();
+  for (let i = count - 1; i >= 0; i--) {
+    const item = divItems.nth(i);
+    const txt = ((await item.textContent().catch(() => "")) ?? "").trim();
+    if (txt !== iataCode) continue;
+    try {
+      await item.click({ force: true, timeout: 5_000 });
+      logger.info({ label, iataCode }, "Dropdown item clicked");
+      return;
+    } catch { /* try next candidate */ }
   }
-
-  logger.info({ label, iataCode, matchedText: (result as any).text }, "Dropdown item clicked");
+  throw new Error(`No dropdown item with exact text "${iataCode}" for ${label}`);
 }
 
 /** Switch to one-way via React native setter, then select calendar day. */
@@ -314,7 +292,12 @@ async function setOnewayAndDate(
   await selectCalendarDay(page, year, month, day);
 }
 
-/** Navigate the calendar to target month and tap the day. */
+/** Navigate the calendar to target month and tap the day.
+ *
+ * iPhone 12 Pro context fires touch events; react-date-range listens to
+ * touchend, not synthetic .click(). Use Playwright .tap() for the day so the
+ * React state actually updates and the search button becomes enabled.
+ */
 async function selectCalendarDay(
   page: import("playwright").Page,
   year: number,
@@ -329,194 +312,178 @@ async function selectCalendarDay(
 
   await page.waitForTimeout(500);
 
-  // Check if calendar is visible
-  const calendarInfo = await page.evaluate(() => {
-    const rdrMonths = document.querySelectorAll(".rdrMonth");
-    const calendars = document.querySelectorAll("[class*='calendar'], [class*='Calendar'], [class*='DateRange'], [class*='daterange']");
-    const dateDisplays = document.querySelectorAll("p.jss177, [class*='date'], label[class*='Date']");
-    return {
-      rdrMonthCount: rdrMonths.length,
-      calendarCount: calendars.length,
-      dateDisplayCount: dateDisplays.length,
-      pageUrl: window.location.href,
-    };
-  });
-  logger.info(calendarInfo, "Calendar state before date selection");
+  // ── Navigate calendar to the target month ────────────────────────────────
+  // Calendar uses an <img src="…angle-right.svg"> for the next-month control —
+  // standard "next button" selectors miss it. Tap the image's clickable
+  // ancestor with Playwright so touch events fire in iPhone context.
+  // Restrict to elements inside the calendar so we don't tap decorative
+  // angle-right images elsewhere on the page (which times out).
+  const calendarRoot = page.locator(".rdrCalendarWrapper, [class*='Calendar'], [class*='DateRange']").first();
+  const nextLocators = [
+    calendarRoot.locator(".rdrNextButton").first(),
+    calendarRoot.locator("img[src*='angle-right']").locator("xpath=ancestor::*[self::button or self::a or @role='button'][1]").first(),
+    calendarRoot.locator("img[src*='angle-right']").first(),
+    page.locator(".rdrNextButton, button[aria-label*='Next' i], button[aria-label*='Tiếp' i]").first(),
+  ];
 
-  for (let attempt = 0; attempt < 13; attempt++) {
-    const result = await page.evaluate(
-      ({ yr, mo, dy, monthStr }) => {
-        const monthSelectors = [".rdrMonth", ".calendar-month", "[class*='Month']"];
-        let monthContainers: Element[] = [];
-        for (const sel of monthSelectors) {
-          const els = document.querySelectorAll(sel);
-          if (els.length > 0) {
-            monthContainers = Array.from(els);
-            break;
-          }
-        }
-
-        if (monthContainers.length === 0) {
-          const allHeaders = document.querySelectorAll("h3, h4, h5, span, div");
-          for (const header of Array.from(allHeaders)) {
-            const txt = (header.textContent ?? "").trim();
-            if (txt.includes(String(yr)) && (txt.includes(monthStr) || txt.includes(`/${String(mo).padStart(2, "0")}/`))) {
-              monthContainers = [header.closest(".rdrMonth, [class*='Month']") ?? header.parentElement ?? header];
-              break;
-            }
-          }
-        }
-
-        for (const mc of monthContainers) {
-          const headerText = (mc.textContent ?? "").trim();
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const onTarget = await page.evaluate(
+      ({ yr, monthStr, mo }) => {
+        const mcs = document.querySelectorAll(".rdrMonth, [class*='Month']");
+        for (const mc of Array.from(mcs)) {
+          const txt = (mc.textContent ?? "").trim();
           if (
-            headerText.includes(String(yr)) &&
-            (headerText.includes(monthStr) || headerText.includes(`/${String(mo).padStart(2, "0")}/`))
-          ) {
-            const dayBtns = mc.querySelectorAll("button");
-            for (const btn of Array.from(dayBtns)) {
-              const btnTxt = (btn.textContent ?? "").trim();
-              const isDisabled = btn.classList.contains("rdrDayDisabled") ||
-                btn.classList.contains("rdrDayPassive") ||
-                btn.hasAttribute("disabled");
-              if (btnTxt === String(dy) && !isDisabled) {
-                const span = btn.querySelector(".rdrDayNumber span");
-                if (span) {
-                  (span as HTMLElement).click();
-                  return { success: true, method: "span-click" };
-                }
-                (btn as HTMLElement).click();
-                return { success: true, method: "btn-click" };
-              }
-            }
-          }
+            txt.includes(String(yr)) &&
+            (txt.includes(monthStr) || txt.includes(`/${String(mo).padStart(2, "0")}/`))
+          ) return true;
         }
-
-        return { success: false, monthCount: monthContainers.length };
+        return false;
       },
-      { yr: year, mo: month, dy: day, monthStr: targetMonthStr },
+      { yr: year, monthStr: targetMonthStr, mo: month },
     );
 
-    if (result.success) {
-      await page.waitForTimeout(700);
-      logger.info({ year, month, day, method: (result as any).method }, "Calendar day selected");
-      return;
+    if (onTarget) {
+      logger.info({ attempt }, "Calendar on target month");
+      break;
     }
 
-    const nextClicked = await page.evaluate(() => {
-      const nextSelectors = [
-        ".rdrNextButton",
-        "button[aria-label*='Next']",
-        "button[aria-label*='next']",
-        "button[aria-label*='Tiếp']",
-        "button[class*='next']",
-        "button.nav-next",
-      ];
-      for (const sel of nextSelectors) {
-        const btn = document.querySelector(sel) as HTMLElement | null;
-        if (btn) {
-          btn.click();
+    let tapped = false;
+    for (const loc of nextLocators) {
+      try {
+        if ((await loc.count()) === 0) continue;
+        await loc.tap({ timeout: 3_000 });
+        tapped = true;
+        break;
+      } catch { /* try next locator */ }
+    }
+
+    if (!tapped) {
+      // Last resort: DOM click on any small element with the angle-right SVG/img.
+      const fallbackClicked = await page.evaluate(() => {
+        const candidates = Array.from(document.querySelectorAll("button, a, [role='button'], div"));
+        for (const el of candidates) {
+          const img = el.querySelector("img[src*='angle-right']");
+          if (img) { (el as HTMLElement).click(); return true; }
+        }
+        return false;
+      });
+      if (!fallbackClicked) {
+        logger.warn({ attempt }, "No calendar next button found, stopping navigation");
+        break;
+      }
+    }
+    await page.waitForTimeout(500);
+  }
+
+  // ── Tap the day span (real touch event for iPhone context) ───────────────
+  const daySelectors = [
+    `.rdrMonth:has-text("${targetMonthStr}") button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive):has(.rdrDayNumber span:text-is("${day}"))`,
+    `button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive):has(.rdrDayNumber span:text-is("${day}"))`,
+  ];
+
+  for (const sel of daySelectors) {
+    try {
+      const loc = page.locator(sel).first();
+      if ((await loc.count()) > 0) {
+        await loc.tap({ timeout: 4_000 });
+        await page.waitForTimeout(700);
+        logger.info({ year, month, day, sel }, "Calendar day tapped");
+        return;
+      }
+    } catch (err) {
+      logger.warn({ sel, err: String(err) }, "Tap selector failed");
+    }
+  }
+
+  // Last resort: direct DOM click (may not register on touch context, but try)
+  try {
+    const fallback = await page.evaluate((dy) => {
+      const dayBtns = document.querySelectorAll("button.rdrDay:not(.rdrDayDisabled):not(.rdrDayPassive)");
+      for (const btn of Array.from(dayBtns)) {
+        const span = btn.querySelector(".rdrDayNumber span");
+        if (span && (span.textContent ?? "").trim() === String(dy)) {
+          (span as HTMLElement).click();
           return true;
         }
       }
-      const allBtns = document.querySelectorAll("button");
-      for (const btn of Array.from(allBtns)) {
-        const rect = btn.getBoundingClientRect();
-        if (rect.width < 50 && rect.right > window.innerWidth * 0.7) {
-          const svg = btn.querySelector("svg");
-          if (svg) {
-            btn.click();
-            return true;
-          }
-        }
-      }
       return false;
-    });
-
-    if (!nextClicked) {
-      logger.warn("No calendar next button found, breaking loop");
-      break;
-    }
-    await page.waitForTimeout(400);
-  }
-
-  logger.warn({ day }, "Month not found in calendar, using first active day as fallback");
-  try {
-    const fallbackResult = await page.evaluate((dy) => {
-      const dayBtns = document.querySelectorAll("button");
-      for (const btn of Array.from(dayBtns)) {
-        const txt = (btn.textContent ?? "").trim();
-        const isDisabled = btn.classList.contains("rdrDayDisabled") ||
-          btn.classList.contains("rdrDayPassive") ||
-          btn.hasAttribute("disabled");
-        if (txt === String(dy) && !isDisabled) {
-          (btn as HTMLElement).click();
-          return { success: true };
-        }
-      }
-      return { success: false };
     }, day);
-
-    if (fallbackResult.success) {
+    if (fallback) {
       await page.waitForTimeout(700);
-      logger.info({ day }, "Fallback calendar day selected");
+      logger.info({ day }, "Calendar day clicked via fallback DOM click");
       return;
     }
-  } catch { /* fallback failed */ }
+  } catch { /* page crashed */ }
 
   logger.error({ year, month, day }, "Failed to select any calendar day");
 }
 
-/** Close the passenger selection modal. */
+/** Close the passenger selection modal — try Playwright click first (DOM click
+ * via page.evaluate doesn't fire touch events in iPhone context). */
 async function dismissPassengerModal(page: import("playwright").Page): Promise<void> {
-  try {
-    const dismissed = await page.evaluate(() => {
-      for (const label of ["close", "Close", "đóng", "Đóng", "close modal"]) {
-        const btn = document.querySelector(`button[aria-label='${label}']`) as HTMLElement | null;
-        if (btn) { btn.click(); return true; }
-      }
-
-      const allBtns = document.querySelectorAll("button");
-      for (const btn of Array.from(allBtns)) {
-        const rect = btn.getBoundingClientRect();
-        if (rect.top < 200 && rect.left > window.innerWidth * 0.6) {
-          const hasIcon = btn.querySelector("svg") || btn.querySelector("img");
-          const isClose = (btn.textContent ?? "").trim().length === 0 ||
-            (btn.textContent ?? "").trim() === "×" ||
-            (btn.textContent ?? "").trim() === "X" ||
-            hasIcon;
-          if (isClose) {
-            btn.click();
-            return true;
-          }
-        }
-      }
-
-      const closeSelectors = [".modal-close", "[data-dismiss='modal']", ".close-btn", "button.close", ".modal-header button:last-child"];
-      for (const sel of closeSelectors) {
-        const btn = document.querySelector(sel) as HTMLElement | null;
-        if (btn) { btn.click(); return true; }
-      }
-
-      return false;
-    });
-
-    if (dismissed) {
-      await page.waitForTimeout(400);
-      return;
-    }
-  } catch { /* page crashed — skip */ }
-
-  for (const label of ["close", "Close", "đóng"]) {
+  // Strategy 1: aria-label close (the one that works in local debug runs).
+  for (const sel of [
+    "button[aria-label='close']",
+    "button[aria-label='Close']",
+    "button[aria-label='đóng']",
+    "button[aria-label='Đóng']",
+  ]) {
     try {
-      const btn = page.locator(`button[aria-label='${label}']`).first();
-      if (await btn.count() > 0) {
-        await btn.click({ force: true });
-        await page.waitForTimeout(400);
+      const btn = page.locator(sel).first();
+      if ((await btn.count()) > 0) {
+        await btn.click({ force: true, timeout: 3_000 });
+        await page.waitForTimeout(500);
+        logger.info({ sel }, "Passenger modal closed via aria-label");
         return;
       }
-    } catch { /* not visible */ }
+    } catch { /* try next */ }
   }
+
+  // Strategy 2: any button with an SVG/icon in upper-right of modal header.
+  try {
+    const svgClose = page.locator("button:has(svg)").filter({
+      has: page.locator("[class*='close' i]"),
+    }).first();
+    if ((await svgClose.count()) > 0) {
+      await svgClose.click({ force: true, timeout: 3_000 });
+      await page.waitForTimeout(500);
+      logger.info("Passenger modal closed via SVG button");
+      return;
+    }
+  } catch { /* try next */ }
+
+  // Strategy 3: DOM dispatchEvent fallback (older overlay-intercept workaround).
+  try {
+    const dispatched = await page.evaluate(() => {
+      const selectors = [
+        'button[aria-label="close"]',
+        'button[aria-label="Close"]',
+        '.MuiDialogTitle-root button',
+        '[class*="closeButton"]',
+        '[class*="close-button"]',
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (el) {
+          el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          return true;
+        }
+      }
+      const btns = document.querySelectorAll("button");
+      for (const btn of Array.from(btns)) {
+        const rect = btn.getBoundingClientRect();
+        if (rect.top < 200 && rect.left > window.innerWidth * 0.6 && btn.querySelector("svg")) {
+          btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          return true;
+        }
+      }
+      return false;
+    });
+    if (dispatched) {
+      await page.waitForTimeout(500);
+      logger.info("Passenger modal closed via dispatchEvent fallback");
+    }
+  } catch { /* page crashed */ }
 }
 
 async function waitForCookie(
