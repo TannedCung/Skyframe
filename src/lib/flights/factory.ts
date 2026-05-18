@@ -33,7 +33,7 @@ class CompositeFlightProvider implements FlightProvider {
         }
         logger.warn({ provider: name }, "Flight provider returned no results, trying next");
       } catch (error) {
-        logger.warn({ provider: name, error }, "Flight provider failed, trying next");
+        logger.warn({ provider: name, err: error }, "Flight provider failed, trying next");
       }
     }
     return [];

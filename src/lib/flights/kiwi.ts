@@ -4,6 +4,7 @@ import logger from "@/lib/logger";
 const KIWI_BASE_URL = "https://api.tequila.kiwi.com/v2/search";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+const FETCH_TIMEOUT_MS = 15_000;
 
 interface KiwiRoute {
   flyFrom: string;
@@ -43,6 +44,7 @@ export class KiwiTequilaFlightProvider implements FlightProvider {
       try {
         const response = await fetch(url.toString(), {
           headers: { apikey: this.apiKey },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
 
         if (response.status === 429) {
@@ -68,7 +70,7 @@ export class KiwiTequilaFlightProvider implements FlightProvider {
 
         return results;
       } catch (error) {
-        logger.warn({ attempt, error }, "Kiwi API attempt failed");
+        logger.warn({ attempt, err: error }, "Kiwi API attempt failed");
         if (attempt === MAX_RETRIES) throw error;
         await sleep(RETRY_DELAY_MS * attempt);
       }

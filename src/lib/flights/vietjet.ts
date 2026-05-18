@@ -2,7 +2,11 @@ import type { FlightProvider, FlightSearchParams, FlightOption, FlightLeg } from
 import logger from "@/lib/logger";
 
 const BOOKING_BASE_URL = "https://www.vietjetair.com/vi/select-flight";
-const MAX_RETRIES = 2;
+// Single attempt only — the worker's browser search can hang for up to a
+// minute on cold start; retries multiply the wait and blow the function
+// budget. See ops incident on 2026-05-18.
+const MAX_RETRIES = 1;
+const FETCH_TIMEOUT_MS = 60_000;
 
 interface ServiceFlight {
   flightNumber: string;
@@ -64,7 +68,7 @@ export class VietJetAirFlightProvider implements FlightProvider {
       try {
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${this.serviceSecret}` },
-          signal: AbortSignal.timeout(120_000), // browser search can take up to 60s
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
 
         if (!res.ok) {
